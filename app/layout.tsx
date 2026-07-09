@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://parametric-01.iverfinne.no'),
+  metadataBase: new URL('https://parametric-03.iverfinne.no'),
   title: 'Parametric Studio — iverfinne.no',
   description:
     'An interactive studio for parametric 3D forms — every design a point in one parameter space.',
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: 'Parametric Studio',
     description:
       'An interactive studio for parametric 3D forms — every design a point in one parameter space.',
-    url: 'https://parametric-01.iverfinne.no',
+    url: 'https://parametric-03.iverfinne.no',
     siteName: 'Parametric Studio',
     type: 'website',
   },

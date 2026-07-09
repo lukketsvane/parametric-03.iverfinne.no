@@ -33,6 +33,7 @@ export type ParamKey =
   | "squash"
   | "flat"
   | "neck"
+  | "twin"
   // crystal
   | "facet"
   | "facetKind"
@@ -81,6 +82,7 @@ export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   squash: { min: 0.55, max: 1.45, step: 0.01 },
   flat: { min: 0.35, max: 1, step: 0.01 },
   neck: { min: 0.02, max: 0.5, step: 0.01 },
+  twin: { min: 0, max: 1, step: 0.01 },
   facet: { min: 0, max: 1, step: 0.01 },
   facetKind: { min: 0, max: 2, step: 0.01 },
   facetUp: { min: 0, max: 1, step: 0.01 },
@@ -129,6 +131,7 @@ export const SECTIONS: {
       { key: "squash", label: "Squash" },
       { key: "flat", label: "Depth" },
       { key: "neck", label: "Neck" },
+      { key: "twin", label: "Twin" },
     ],
   },
   {
@@ -219,11 +222,13 @@ export const SECTIONS: {
  *                chevrons
  *  - søyle:      a ribbed column of flat discs and chevrons, eared cup
  *                on top, no holes and no legs
+ *  - tvilling:   the twin fold — two pierced lobes side by side sharing
+ *                a pinched waist, antennae up and legs down from each
  */
 const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   tinde: {
     height: 3.9, nodes: 1, taper: 1, belly: 0.95, squash: 1.1, flat: 0.55,
-    neck: 0.2,
+    neck: 0.2, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 1, holeR: 0.2, funnel: 0.8, slot: 0, eyes: 0, panel: 0,
     legs: 4, legLen: 1.35, legSplay: 0.22, legBend: 0.12, legTaper: 0.24,
@@ -234,7 +239,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   troll: {
     height: 3.4, nodes: 2, taper: 1.25, belly: 0.62, squash: 1.1, flat: 0.75,
-    neck: 0.26,
+    neck: 0.26, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.16, funnel: 0.35, slot: 0, eyes: 1, panel: 0,
     legs: 2, legLen: 1.55, legSplay: 0.3, legBend: 0.6, legTaper: 0.32,
@@ -245,7 +250,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   lykt: {
     height: 3.8, nodes: 2, taper: 0.6, belly: 0.82, squash: 0.95, flat: 0.8,
-    neck: 0.22,
+    neck: 0.22, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.24, funnel: 0.75, slot: 0, eyes: 0, panel: 0,
     legs: 3, legLen: 1.35, legSplay: 0.32, legBend: 0.06, legTaper: 0.5,
@@ -256,7 +261,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   edderkopp: {
     height: 3.2, nodes: 1, taper: 1, belly: 0.85, squash: 1, flat: 0.95,
-    neck: 0.2,
+    neck: 0.2, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 1, holeR: 0.15, funnel: 0.25, slot: 0, eyes: 0, panel: 0,
     legs: 8, legLen: 1.4, legSplay: 0.34, legBend: 0.3, legTaper: 0.3,
@@ -267,7 +272,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   varde: {
     height: 4.1, nodes: 3, taper: 0.85, belly: 0.68, squash: 0.9, flat: 0.7,
-    neck: 0.2,
+    neck: 0.2, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 3, holeR: 0.24, funnel: 0.55, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 1.45, legSplay: 0.5, legBend: 0.15, legTaper: 0.28,
@@ -278,7 +283,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   krystall: {
     height: 4.0, nodes: 2, taper: 0.72, belly: 0.88, squash: 0.95, flat: 0.85,
-    neck: 0.12,
+    neck: 0.12, twin: 0,
     facet: 1, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.2, funnel: 0.7, slot: 0, eyes: 0, panel: 0,
     legs: 0, legLen: 0.8, legSplay: 0.2, legBend: 0.1, legTaper: 0.4,
@@ -289,7 +294,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   kandelaber: {
     height: 4.0, nodes: 1, taper: 1, belly: 1.0, squash: 1.25, flat: 0.5,
-    neck: 0.2,
+    neck: 0.2, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 3, holeR: 0.11, funnel: 0.12, slot: 1, eyes: 1, panel: 1,
     legs: 4, legLen: 1.25, legSplay: 0.36, legBend: 0.1, legTaper: 0.45,
@@ -300,7 +305,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   spira: {
     height: 4.1, nodes: 2, taper: 0.5, belly: 0.88, squash: 1.35, flat: 0.65,
-    neck: 0.3,
+    neck: 0.3, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.12, funnel: 0.3, slot: 1, eyes: 0, panel: 0,
     legs: 3, legLen: 1.5, legSplay: 0.42, legBend: 0.12, legTaper: 0.35,
@@ -311,7 +316,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   rombe: {
     height: 3.9, nodes: 3, taper: 0.95, belly: 0.8, squash: 1.0, flat: 0.5,
-    neck: 0.06,
+    neck: 0.06, twin: 0,
     facet: 1, facetKind: 0, facetUp: 1, zig: 0,
     holes: 3, holeR: 0.17, funnel: 0.15, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 0.7, legSplay: 0.35, legBend: 0, legTaper: 0.5,
@@ -322,7 +327,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   sikksakk: {
     height: 4.0, nodes: 2, taper: 1.0, belly: 0.72, squash: 0.95, flat: 0.55,
-    neck: 0.1,
+    neck: 0.1, twin: 0,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0.8,
     holes: 2, holeR: 0.2, funnel: 0.5, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 1.3, legSplay: 0.45, legBend: 0.1, legTaper: 0.2,
@@ -333,7 +338,7 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   },
   søyle: {
     height: 4.4, nodes: 4, taper: 1.0, belly: 0.72, squash: 0.6, flat: 1.0,
-    neck: 0.04,
+    neck: 0.04, twin: 0,
     facet: 0, facetKind: 0, facetUp: 0, zig: 0.85,
     holes: 0, holeR: 0.15, funnel: 0.2, slot: 0, eyes: 0, panel: 0,
     legs: 0, legLen: 0.6, legSplay: 0.2, legBend: 0.05, legTaper: 0.5,
@@ -341,6 +346,17 @@ const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
     prongs: 0, prongLen: 0.4, spread: 0, prongTaper: 0.7, spout: 0.9,
     arms: 1, armLen: 0.12, armTilt: 0.05, nubs: 0,
     tex: 0.35, texScale: 24, gouge: 0.05,
+  },
+  tvilling: {
+    height: 3.6, nodes: 1, taper: 1, belly: 0.8, squash: 1.05, flat: 0.6,
+    neck: 0.2, twin: 0.85,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 1, holeR: 0.28, funnel: 0.6, slot: 0, eyes: 0, panel: 0,
+    legs: 4, legLen: 1.5, legSplay: 0.25, legBend: 0.12, legTaper: 0.22,
+    around: 0.15, limbR: 0.085,
+    prongs: 2, prongLen: 1.55, spread: 0.5, prongTaper: 0.16, spout: 0,
+    arms: 1, armLen: 0.3, armTilt: 0, nubs: 0,
+    tex: 0.85, texScale: 44, gouge: 0.15,
   },
 }
 
@@ -372,7 +388,7 @@ function rng(seed: number) {
 // of the full range for continuous params, absolute ± for integer ones
 const JITTER: Record<ParamKey, number> = {
   height: 0.1, nodes: 1, taper: 0.15, belly: 0.12, squash: 0.15, flat: 0.12,
-  neck: 0.15,
+  neck: 0.15, twin: 0.06,
   facet: 0.15, facetKind: 0.25, facetUp: 0.2, zig: 0.15,
   holes: 1, holeR: 0.15, funnel: 0.2, slot: 0.15, eyes: 0.15, panel: 0.1,
   legs: 1, legLen: 0.15, legSplay: 0.15, legBend: 0.2, legTaper: 0.15,
@@ -421,6 +437,20 @@ export function genParams(seed: number): Params {
   // faceted bodies are a strong motif in the references — lean a slice
   // of the space hard into crystal
   if (rnd() < 0.18) p.facet = Math.max(p.facet, +(0.75 + rnd() * 0.25).toFixed(3))
+
+  // the twin fold is all-or-nothing: a slight fold only smears the waist
+  if (p.twin < 0.12) p.twin = 0
+  else if (p.twin < 0.45) p.twin = 0.45
+  // ...and one seed in ten commits to it outright
+  if (rnd() < 0.1) p.twin = +(0.55 + rnd() * 0.4).toFixed(3)
+
+  // surface styles: a smooth turned-wood slice, and dense fine peen on
+  // most of the heavily carved pieces
+  if (rnd() < 0.15) {
+    p.tex = +(p.tex * 0.12).toFixed(3)
+  } else if (p.tex > 0.6 && rnd() < 0.55) {
+    p.texScale = Math.max(p.texScale, Math.round(36 + rnd() * 22))
+  }
 
   // features that ride on holes make no sense without them
   if (p.holes === 0) {

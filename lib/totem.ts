@@ -10,7 +10,9 @@ import type { Params } from "./engine"
  *              spheres (squash = height, flat = depth) that crossfade
  *              into faceted polyhedra (the cut is itself continuous,
  *              diamond → dodeca → icosa), fused by a smooth neck; zigzag
- *              chevron beads can fill the joints between them
+ *              chevron beads can fill the joints between them; a twin
+ *              fold (|x| − offset) doubles the whole piece into two
+ *              side-by-side lobes pinched at a shared waist
  *   2. holes   funnel-countersunk bores through the hubs along z —
  *              round eyes, vertically stretched slots, side-by-side
  *              pairs, optionally sunk into a square recessed panel
@@ -20,8 +22,10 @@ import type { Params } from "./engine"
  *              crown (needle spikes to parallel candle fingers), short
  *              side arms at the equators, teat nubs underneath, one
  *              optional spout on top
- *   4. carve   the whole body is displaced by ridged noise — hammered
- *              peen dimples crossfading into long directional gouges
+ *   4. carve   the whole body is displaced near the surface — cellular
+ *              scallop dimples (every Worley cell one hammer blow, the
+ *              crisp ridges landing exactly on the cell walls)
+ *              crossfading into long directional gouges
  *
  * Every organic accident (hub swelling, hole drift, limb jitter) is
  * seeded, so a design is exactly reproducible from its parameters.
@@ -94,6 +98,38 @@ function vnoise3(x: number, y: number, z: number, s: number): number {
 // centered seeded jitter in [-1, 1]
 function jit(a: number, b: number, seed: number): number {
   return ih(a, b, 101, seed) * 2 - 1
+}
+
+// Worley F1 — distance to the nearest jittered feature point. One hammer
+// blow per cell: the cups sit at the features, the crisp ridges land on
+// the cell walls. A single hash per cell is sliced into the three jitter
+// coordinates.
+function worleyF1(x: number, y: number, z: number, s: number): number {
+  const xi = Math.floor(x)
+  const yi = Math.floor(y)
+  const zi = Math.floor(z)
+  let best = 8
+  for (let dx = -1; dx <= 1; dx++)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const cx = xi + dx
+        const cy = yi + dy
+        const cz = zi + dz
+        let n =
+          Math.imul(cx, 374761393) ^
+          Math.imul(cy, 668265263) ^
+          Math.imul(cz, 1274126177) ^
+          Math.imul(s, 39916801)
+        n = Math.imul(n ^ (n >>> 13), 1274126177)
+        n ^= n >>> 16
+        const u = n >>> 0
+        const fx = cx + ((u & 1023) + 0.5) / 1024 - x
+        const fy = cy + (((u >>> 10) & 1023) + 0.5) / 1024 - y
+        const fz = cz + (((u >>> 20) & 1023) + 0.5) / 1024 - z
+        const d2 = fx * fx + fy * fy + fz * fz
+        if (d2 < best) best = d2
+      }
+  return Math.sqrt(best)
 }
 
 /* --------------------------------- helpers -------------------------------- */
@@ -208,6 +244,7 @@ type Plan = {
   planesB: Float32Array
   planeKB: number
   facetMix: number
+  twinOff: number // |x| fold offset — 0 keeps a single body
   neckK: number
   holeFunnel: number
   seed: number
@@ -294,7 +331,7 @@ function computePlan(p: Params): Plan {
     const kz = (az2 + fz) / 2 + dz * p.legBend * L * 0.3
     const ra = limbR * 1.2
     const rb = limbR * p.legTaper
-    const STEPS = 3
+    const STEPS = 4
     let px = ax
     let py = ay
     let pz = az2
@@ -447,6 +484,11 @@ function computePlan(p: Params): Plan {
   const setA = PLANE_SETS[kLo]
   const setB = PLANE_SETS[kLo + 1]
 
+  /* twin fold — two side-by-side lobes pinched at a shared waist */
+  let maxRx = 0
+  for (const h of hubs) maxRx = Math.max(maxRx, h.rx)
+  const twinOff = p.twin > 0.04 ? p.twin * maxRx * 0.9 : 0
+
   /* bounds — swept over every primitive, padded for carve + blend */
   let x1 = 0
   let y0 = Infinity
@@ -465,6 +507,7 @@ function computePlan(p: Params): Plan {
     y1 = Math.max(y1, s.ay + r, s.by + r)
     z1 = Math.max(z1, Math.abs(s.az) + r, Math.abs(s.bz) + r)
   }
+  x1 += twinOff
   // the height slider is the piece's true overall height: whatever the
   // limbs and stack add up to is scaled to exactly p.height world units
   const S = p.height / Math.max(0.001, y1 - y0)
@@ -486,6 +529,7 @@ function computePlan(p: Params): Plan {
     planesB: setB.n,
     planeKB: setB.k,
     facetMix: kf - kLo,
+    twinOff,
     neckK: p.neck * Math.min(...hubs.map((h) => h.rx)),
     holeFunnel: p.funnel,
     seed,
@@ -510,9 +554,12 @@ const TEX_BAND = 0.09
 
 function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
   const { S, hubs, minis, segs, holes, panel, planesA, planeKA, planesB, planeKB, facetMix, neckK } = plan
-  const x = wx / S
+  let x = wx / S
   const y = wy / S
   const z = wz / S
+  // twin fold: |x| − offset places a full mirrored copy of the piece in
+  // each lobe, hard-unioned at the x = 0 waist
+  if (plan.twinOff > 0) x = Math.abs(x) - plan.twinOff
 
   /* hubs, smooth-fused into one spine */
   let d = Infinity
@@ -572,7 +619,7 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     const ds =
       Math.hypot(pax - bax * hh, pay - bay * hh, paz - baz * hh) -
       (s.ra + (s.rb - s.ra) * hh)
-    d = smin(d, ds, 0.05)
+    d = smin(d, ds, 0.04)
   }
 
   /* panel recess — carve the faces down around the hole cluster */
@@ -595,16 +642,28 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     d = Math.max(d, -cut)
   }
 
-  /* carve — hammered peen crossfading into directional gouges */
+  /* carve — scalloped peen chips crossfading into directional gouges */
   if (plan.tex > 0 && Math.abs(d) < TEX_BAND) {
     const s = plan.texScale
-    const peen = vnoise3(x * s, y * s, z * s, plan.seed)
-    const gou = vnoise3(x * s * 0.9, y * s * 0.28, z * s * 0.9, plan.seed + 7)
-    const nmix = peen + (gou - peen) * plan.gouge
-    let ridge = 1 - Math.abs(nmix - 0.5) * 2 // creases at the cell walls
-    ridge *= ridge * (3 - 2 * ridge) // sharpen the chip facets
+    let disp = 0
+    if (plan.gouge < 1) {
+      // one hammer blow per cell: a shallow cup at each feature point,
+      // crisp ridges standing where neighbouring cups meet
+      const f1 = worleyF1(x * s, y * s, z * s, plan.seed)
+      let cup = 1 - f1 * 1.45
+      if (cup < 0) cup = 0
+      cup *= cup * (3 - 2 * cup)
+      disp += (1 - plan.gouge) * 0.023 * (cup - 0.38)
+    }
+    if (plan.gouge > 0) {
+      // long strokes: value noise stretched along y, ridged
+      const gou = vnoise3(x * s * 0.9, y * s * 0.28, z * s * 0.9, plan.seed + 7)
+      let ridge = 1 - Math.abs(gou - 0.5) * 2
+      ridge *= ridge * (3 - 2 * ridge)
+      disp += plan.gouge * 0.017 * (ridge - 0.45)
+    }
     const micro = vnoise3(x * s * 2.7, y * s * 2.7, z * s * 2.7, plan.seed + 13)
-    d += plan.tex * (0.017 * (ridge - 0.45) + 0.005 * (micro - 0.5))
+    d += plan.tex * (disp + 0.003 * (micro - 0.5))
   }
 
   return d * S

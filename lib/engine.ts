@@ -1,0 +1,388 @@
+/**
+ * The totem motor's public parameter space.
+ *
+ * One formal system covers every reference piece: a vertical totem of
+ * one to four hub bodies stacked on a shared axis — each hub a squashed
+ * sphere that can crystallise into a faceted polyhedron (diamond,
+ * dodecahedron, icosahedron) — pierced by funnel-recessed through-holes
+ * (round eyes, tall slots, sunken square panels), and sprouting radial
+ * limbs: antenna prongs from the crown, tapered legs from the base,
+ * short side arms from the equators, teat nubs underneath. The whole
+ * body is chip-carved with a hammered peen or directional gouge.
+ * Each preset is one of the reference pieces; the sliders move through
+ * the space between them.
+ *
+ * This module is UI-facing and dependency-free. The geometry itself is
+ * built in lib/totem.ts (SDF + marching cubes) and mounted by
+ * components/engine-mesh.tsx.
+ */
+
+/** Physical scale: 1 scene unit = 100 mm. STL exports are scaled to mm. */
+export const MM_PER_UNIT = 100
+
+export type ParamKey =
+  // stack
+  | "height"
+  | "nodes"
+  | "taper"
+  | "belly"
+  | "squash"
+  | "flat"
+  | "neck"
+  // crystal
+  | "facet"
+  | "facetKind"
+  | "facetUp"
+  | "zig"
+  // holes
+  | "holes"
+  | "holeR"
+  | "funnel"
+  | "slot"
+  | "eyes"
+  | "panel"
+  // legs
+  | "legs"
+  | "legLen"
+  | "legSplay"
+  | "legBend"
+  | "legTaper"
+  | "around"
+  | "limbR"
+  // crown
+  | "prongs"
+  | "prongLen"
+  | "spread"
+  | "prongTaper"
+  | "spout"
+  // arms & nubs
+  | "arms"
+  | "armLen"
+  | "armTilt"
+  | "nubs"
+  // surface
+  | "tex"
+  | "texScale"
+  | "gouge"
+
+export type ParamRange = { min: number; max: number; step: number }
+
+export type Params = { preset: string; seed: number } & Record<ParamKey, number>
+
+export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
+  height: { min: 1.8, max: 4.4, step: 0.05 },
+  nodes: { min: 1, max: 4, step: 1 },
+  taper: { min: 0.45, max: 1.6, step: 0.01 },
+  belly: { min: 0.4, max: 1.05, step: 0.01 },
+  squash: { min: 0.55, max: 1.45, step: 0.01 },
+  flat: { min: 0.35, max: 1, step: 0.01 },
+  neck: { min: 0.02, max: 0.5, step: 0.01 },
+  facet: { min: 0, max: 1, step: 0.01 },
+  facetKind: { min: 0, max: 2, step: 1 },
+  facetUp: { min: 0, max: 1, step: 0.01 },
+  zig: { min: 0, max: 1, step: 0.01 },
+  holes: { min: 0, max: 3, step: 1 },
+  holeR: { min: 0.08, max: 0.5, step: 0.01 },
+  funnel: { min: 0, max: 1, step: 0.01 },
+  slot: { min: 0, max: 1, step: 0.01 },
+  eyes: { min: 0, max: 1, step: 0.01 },
+  panel: { min: 0, max: 1, step: 0.01 },
+  legs: { min: 0, max: 8, step: 1 },
+  legLen: { min: 0.3, max: 2.4, step: 0.01 },
+  legSplay: { min: 0, max: 0.9, step: 0.01 },
+  legBend: { min: 0, max: 1, step: 0.01 },
+  legTaper: { min: 0.12, max: 1, step: 0.01 },
+  around: { min: 0, max: 1, step: 0.01 },
+  limbR: { min: 0.045, max: 0.16, step: 0.002 },
+  prongs: { min: 0, max: 5, step: 1 },
+  prongLen: { min: 0.15, max: 2, step: 0.01 },
+  spread: { min: 0, max: 1, step: 0.01 },
+  prongTaper: { min: 0.08, max: 1, step: 0.01 },
+  spout: { min: 0, max: 1, step: 0.01 },
+  arms: { min: 0, max: 3, step: 1 },
+  armLen: { min: 0.08, max: 1.2, step: 0.01 },
+  armTilt: { min: -0.6, max: 0.6, step: 0.01 },
+  nubs: { min: 0, max: 3, step: 1 },
+  tex: { min: 0, max: 1, step: 0.01 },
+  texScale: { min: 8, max: 48, step: 1 },
+  gouge: { min: 0, max: 1, step: 0.01 },
+}
+
+/** How the controls panel groups the parameters. */
+export const SECTIONS: {
+  title: string
+  keys: { key: ParamKey; label: string }[]
+}[] = [
+  {
+    title: "Stack",
+    keys: [
+      { key: "height", label: "Height" },
+      { key: "nodes", label: "Bodies" },
+      { key: "taper", label: "Taper" },
+      { key: "belly", label: "Belly" },
+      { key: "squash", label: "Squash" },
+      { key: "flat", label: "Depth" },
+      { key: "neck", label: "Neck" },
+    ],
+  },
+  {
+    title: "Crystal",
+    keys: [
+      { key: "facet", label: "Facet" },
+      { key: "facetKind", label: "Cut" },
+      { key: "facetUp", label: "Climb" },
+      { key: "zig", label: "Zigzag" },
+    ],
+  },
+  {
+    title: "Holes",
+    keys: [
+      { key: "holes", label: "Holes" },
+      { key: "holeR", label: "Bore" },
+      { key: "funnel", label: "Funnel" },
+      { key: "slot", label: "Slot" },
+      { key: "eyes", label: "Eyes" },
+      { key: "panel", label: "Panel" },
+    ],
+  },
+  {
+    title: "Legs",
+    keys: [
+      { key: "legs", label: "Legs" },
+      { key: "legLen", label: "Length" },
+      { key: "legSplay", label: "Splay" },
+      { key: "legBend", label: "Bend" },
+      { key: "legTaper", label: "Taper" },
+      { key: "around", label: "Around" },
+      { key: "limbR", label: "Girth" },
+    ],
+  },
+  {
+    title: "Crown",
+    keys: [
+      { key: "prongs", label: "Prongs" },
+      { key: "prongLen", label: "Length" },
+      { key: "spread", label: "Spread" },
+      { key: "prongTaper", label: "Taper" },
+      { key: "spout", label: "Spout" },
+    ],
+  },
+  {
+    title: "Arms",
+    keys: [
+      { key: "arms", label: "Arm pairs" },
+      { key: "armLen", label: "Length" },
+      { key: "armTilt", label: "Tilt" },
+      { key: "nubs", label: "Nubs" },
+    ],
+  },
+  {
+    title: "Surface",
+    keys: [
+      { key: "tex", label: "Carve" },
+      { key: "texScale", label: "Grain" },
+      { key: "gouge", label: "Gouge" },
+    ],
+  },
+]
+
+/**
+ * The reference pieces, one preset each:
+ *  - tinde:      one great lens body, three antennae, four legs, one
+ *                funneled eye
+ *  - troll:      horned head with twin eyes and ear stubs over two long
+ *                bowed legs
+ *  - lykt:       small cross-armed head over a deep-funneled body on a
+ *                tripod, one teat
+ *  - edderkopp:  round head, two tall ears, eight legs all around
+ *  - varde:      three pierced bodies spiked with crossing antennae,
+ *                legs and side arms
+ *  - krystall:   four parallel fingers and a pierced head resting on a
+ *                faceted crystal plinth
+ *  - kandelaber: flat plaque body, four candle fingers, a sunken panel
+ *                of three slots
+ *  - spira:      slotted tall body under a pierced head, cross arms,
+ *                tripod legs
+ */
+const BASE: Record<string, Record<ParamKey, number>> = {
+  tinde: {
+    height: 3.9, nodes: 1, taper: 1, belly: 0.95, squash: 1.1, flat: 0.55,
+    neck: 0.2,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 1, holeR: 0.2, funnel: 0.8, slot: 0, eyes: 0, panel: 0,
+    legs: 4, legLen: 1.35, legSplay: 0.22, legBend: 0.12, legTaper: 0.24,
+    around: 0.55, limbR: 0.09,
+    prongs: 3, prongLen: 1.65, spread: 0.35, prongTaper: 0.14, spout: 0,
+    arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
+    tex: 0.8, texScale: 32, gouge: 0.2,
+  },
+  troll: {
+    height: 3.4, nodes: 2, taper: 1.25, belly: 0.62, squash: 1.1, flat: 0.75,
+    neck: 0.26,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 2, holeR: 0.16, funnel: 0.35, slot: 0, eyes: 1, panel: 0,
+    legs: 2, legLen: 1.55, legSplay: 0.3, legBend: 0.6, legTaper: 0.32,
+    around: 0, limbR: 0.105,
+    prongs: 2, prongLen: 0.6, spread: 0.85, prongTaper: 0.18, spout: 0.5,
+    arms: 1, armLen: 0.3, armTilt: 0.02, nubs: 0,
+    tex: 0.75, texScale: 32, gouge: 0.35,
+  },
+  lykt: {
+    height: 3.8, nodes: 2, taper: 0.6, belly: 0.82, squash: 0.95, flat: 0.8,
+    neck: 0.22,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 2, holeR: 0.24, funnel: 0.75, slot: 0, eyes: 0, panel: 0,
+    legs: 3, legLen: 1.35, legSplay: 0.32, legBend: 0.06, legTaper: 0.5,
+    around: 0.5, limbR: 0.105,
+    prongs: 1, prongLen: 0.5, spread: 0, prongTaper: 0.6, spout: 0,
+    arms: 2, armLen: 0.32, armTilt: 0, nubs: 1,
+    tex: 0.85, texScale: 34, gouge: 0,
+  },
+  edderkopp: {
+    height: 3.2, nodes: 1, taper: 1, belly: 0.85, squash: 1, flat: 0.95,
+    neck: 0.2,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 1, holeR: 0.15, funnel: 0.25, slot: 0, eyes: 0, panel: 0,
+    legs: 8, legLen: 1.4, legSplay: 0.34, legBend: 0.3, legTaper: 0.3,
+    around: 1, limbR: 0.095,
+    prongs: 2, prongLen: 1.3, spread: 0.12, prongTaper: 0.3, spout: 0,
+    arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
+    tex: 0.7, texScale: 36, gouge: 0.15,
+  },
+  varde: {
+    height: 4.1, nodes: 3, taper: 0.85, belly: 0.68, squash: 0.9, flat: 0.7,
+    neck: 0.2,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 3, holeR: 0.24, funnel: 0.55, slot: 0, eyes: 0, panel: 0,
+    legs: 2, legLen: 1.45, legSplay: 0.5, legBend: 0.15, legTaper: 0.28,
+    around: 0, limbR: 0.085,
+    prongs: 2, prongLen: 1.65, spread: 0.9, prongTaper: 0.2, spout: 0.4,
+    arms: 3, armLen: 0.36, armTilt: 0.02, nubs: 2,
+    tex: 0.85, texScale: 32, gouge: 0.5,
+  },
+  krystall: {
+    height: 4.0, nodes: 2, taper: 0.72, belly: 0.88, squash: 0.95, flat: 0.85,
+    neck: 0.12,
+    facet: 1, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 2, holeR: 0.2, funnel: 0.7, slot: 0, eyes: 0, panel: 0,
+    legs: 0, legLen: 0.8, legSplay: 0.2, legBend: 0.1, legTaper: 0.4,
+    around: 0, limbR: 0.11,
+    prongs: 4, prongLen: 1.7, spread: 0.12, prongTaper: 0.75, spout: 0,
+    arms: 1, armLen: 0.14, armTilt: 0, nubs: 0,
+    tex: 0.8, texScale: 30, gouge: 0.7,
+  },
+  kandelaber: {
+    height: 4.0, nodes: 1, taper: 1, belly: 1.0, squash: 1.25, flat: 0.5,
+    neck: 0.2,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 3, holeR: 0.11, funnel: 0.12, slot: 1, eyes: 1, panel: 1,
+    legs: 4, legLen: 1.25, legSplay: 0.36, legBend: 0.1, legTaper: 0.45,
+    around: 0.3, limbR: 0.105,
+    prongs: 4, prongLen: 1.3, spread: 0.05, prongTaper: 0.8, spout: 0,
+    arms: 1, armLen: 0.2, armTilt: 0, nubs: 1,
+    tex: 0.85, texScale: 34, gouge: 0.2,
+  },
+  spira: {
+    height: 4.1, nodes: 2, taper: 0.5, belly: 0.88, squash: 1.35, flat: 0.65,
+    neck: 0.3,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 2, holeR: 0.12, funnel: 0.3, slot: 1, eyes: 0, panel: 0,
+    legs: 3, legLen: 1.5, legSplay: 0.42, legBend: 0.12, legTaper: 0.35,
+    around: 0.45, limbR: 0.1,
+    prongs: 1, prongLen: 0.55, spread: 0, prongTaper: 0.55, spout: 0,
+    arms: 2, armLen: 0.45, armTilt: 0.03, nubs: 1,
+    tex: 0.9, texScale: 38, gouge: 0.15,
+  },
+}
+
+export const PRESETS: readonly string[] = Object.keys(BASE)
+
+/** Body tint per family — dark bronzes and oiled walnuts like the pieces. */
+export const PRESET_COLORS: Record<string, string> = {
+  tinde: "#6b4a30",
+  troll: "#4a2e20",
+  lykt: "#71503a",
+  edderkopp: "#3a2a22",
+  varde: "#503a2b",
+  krystall: "#5e4128",
+  kandelaber: "#332620",
+  spira: "#453121",
+}
+
+/** Which parameter each two-finger scroll axis nudges. */
+export const NUDGE_PARAMS: { vertical?: ParamKey; horizontal?: ParamKey } = {
+  vertical: "squash",
+  horizontal: "belly",
+}
+
+export function randomSeed(): number {
+  return Math.floor(Math.random() * 9000) + 1000
+}
+
+/**
+ * The canonical design of a preset family. Deliberately NOT seed-jittered:
+ * picking a preset reproduces the reference piece exactly — the seed only
+ * phases the carve noise and the small asymmetries.
+ */
+export function genParams(seed: number, preset: string): Params {
+  const base = BASE[preset] ?? BASE[PRESETS[0]]
+  return { preset: BASE[preset] ? preset : PRESETS[0], seed, ...base }
+}
+
+// mulberry32 — tiny deterministic PRNG for shuffle jitter
+function rng(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// how far shuffle may wander from the family base: fraction of the full
+// range for continuous params, absolute ± for integer ones
+const JITTER: Record<ParamKey, number> = {
+  height: 0.1, nodes: 1, taper: 0.15, belly: 0.12, squash: 0.15, flat: 0.12,
+  neck: 0.15,
+  facet: 0.15, facetKind: 1, facetUp: 0.2, zig: 0.15,
+  holes: 1, holeR: 0.15, funnel: 0.2, slot: 0.15, eyes: 0.15, panel: 0.1,
+  legs: 1, legLen: 0.15, legSplay: 0.15, legBend: 0.2, legTaper: 0.15,
+  around: 0.15, limbR: 0.12,
+  prongs: 1, prongLen: 0.18, spread: 0.15, prongTaper: 0.15, spout: 0.2,
+  arms: 1, armLen: 0.2, armTilt: 0.15, nubs: 1,
+  tex: 0.12, texScale: 5, gouge: 0.2,
+}
+
+// structure that collapses to zero stays zero — it defines the family
+const ZERO_LOCKED: ParamKey[] = [
+  "facet", "zig", "holes", "slot", "eyes", "panel",
+  "legs", "prongs", "spout", "arms", "nubs",
+]
+
+/** A seeded variation within a preset family. */
+export function randomizeParams(seed: number, preset: string): Params {
+  const p = genParams(seed, preset)
+  const rnd = rng(seed * 2654435761)
+  for (const k of Object.keys(PARAM_RANGES) as ParamKey[]) {
+    const r = PARAM_RANGES[k]
+    const j = JITTER[k]
+    if (j === 0) continue
+    let v: number
+    if (r.step >= 1) {
+      v = p[k] + Math.round((rnd() - 0.5) * 2 * j)
+    } else {
+      v = p[k] + (rnd() - 0.5) * 2 * j * (r.max - r.min)
+    }
+    v = Math.min(r.max, Math.max(r.min, v))
+    p[k] = r.step >= 1 ? Math.round(v) : +v.toFixed(3)
+  }
+  const base = BASE[p.preset]
+  for (const k of ZERO_LOCKED) {
+    if (base[k] === 0) p[k] = 0
+  }
+  return p
+}
+
+export const DEFAULT_PARAMS: Params = genParams(1204, "tinde")

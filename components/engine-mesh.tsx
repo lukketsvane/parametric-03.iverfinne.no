@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { useThree } from "@react-three/fiber"
-import { PRESET_COLORS, type Params } from "@/lib/engine"
+import type { Params } from "@/lib/engine"
 import { buildTotemArrays, gridMetaFor } from "@/lib/totem"
 import { arraysToGeometry } from "@/lib/geometry"
 import type { EngineJob, EngineResult } from "@/lib/engine-worker"
@@ -11,12 +11,12 @@ import type { EngineJob, EngineResult } from "@/lib/engine-worker"
 // target grid cells along the largest axis — coarse while dragging,
 // refined once the parameters settle. Refines are sampled by a fleet of
 // slab workers across every available core, so desktops can afford grids
-// fine enough for needle prongs and hammered relief. Phones get a lighter,
-// single-worker refine so regeneration never feels stuck.
-const PREVIEW_RES = 96
-const REFINE_RES_MOBILE = 144
-const REFINE_RES = 240
-const REFINE_RES_HI = 300
+// fine enough for needle prongs and hammered relief. Phones get a lighter
+// refine so regeneration never feels stuck.
+const PREVIEW_RES = 112
+const REFINE_RES_MOBILE = 192
+const REFINE_RES = 352
+const REFINE_RES_HI = 424
 const REFINE_DELAY = 240
 
 const newWorker = () =>
@@ -40,7 +40,7 @@ export function EngineMesh({
 
   // two lanes: a persistent fast worker for previews, and a killable
   // fleet for long refines — a stale refine is terminated instead of
-  // awaited, so switching presets or dragging never waits behind an old
+  // awaited, so shuffling designs or dragging never waits behind an old
   // build
   const previewWorker = useRef<Worker | null>(null)
   const previewBusy = useRef(false)
@@ -202,19 +202,17 @@ export function EngineMesh({
     return () => mesh?.geometry?.dispose()
   }, [])
 
-  const tint = PRESET_COLORS[params.preset] ?? "#503a2b"
-
   return (
     <mesh ref={meshRef} castShadow receiveShadow>
-      {/* patinated bronze / oiled walnut: the hammered relief carries the
-          highlights, the body stays deep and warm */}
+      {/* ebonised near-black: the body stays deep and dark, the hammered
+          relief carries the highlights */}
       <meshPhysicalMaterial
-        color={tint}
-        roughness={0.46}
+        color="#151110"
+        roughness={0.42}
         metalness={0.4}
         clearcoat={0.35}
-        clearcoatRoughness={0.45}
-        envMapIntensity={0.9}
+        clearcoatRoughness={0.4}
+        envMapIntensity={1.0}
       />
     </mesh>
   )

@@ -59,7 +59,7 @@ export function Viewer({
   onNudge: (axis: NudgeAxis, deltaPx: number) => void
 }) {
   const bg = dark ? "#000000" : "#ffffff"
-  const shadow = hiDetail ? 2048 : 1024
+  const shadow = hiDetail ? 4096 : 2048
   // refresh the baked contact shadow once per parameter change
   const shadowSeq = useRef(0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,7 +70,7 @@ export function Viewer({
     <Canvas
       shadows
       frameloop="demand"
-      dpr={hiDetail ? [1, 3] : [1, 2]}
+      dpr={hiDetail ? [1, 3] : [1, 2.5]}
       gl={{ antialias: true, powerPreference: "high-performance" }}
       camera={{ position: [2.6, 2.2, 6.6], fov: 32 }}
       className="touch-none"
@@ -93,7 +93,9 @@ export function Viewer({
         shadow-camera-near={0.5}
         shadow-camera-far={24}
       />
-      <directionalLight position={[-6, 3, -2]} intensity={0.35} />
+      {/* the ebonised body is near-black — a firmer rim keeps its edge
+          readable against the dark-mode void */}
+      <directionalLight position={[-6, 3, -2]} intensity={0.5} />
 
       <Suspense fallback={null}>
         <group position={[0, -0.85, 0]}>
@@ -118,7 +120,7 @@ export function Viewer({
                 scale={9}
                 blur={2.2}
                 far={2.6}
-                resolution={mobile ? 256 : 512}
+                resolution={mobile ? 512 : 1024}
                 frames={50}
                 color="#000000"
               />

@@ -8,9 +8,9 @@ import type { Params } from "./engine"
  *
  *   1. hubs    one to four bodies stacked on the y axis — anisotropic
  *              spheres (squash = height, flat = depth) that crossfade
- *              into faceted polyhedra (diamond / dodeca / icosa planes),
- *              fused by a smooth neck; zigzag chevron beads can fill the
- *              joints between them
+ *              into faceted polyhedra (the cut is itself continuous,
+ *              diamond → dodeca → icosa), fused by a smooth neck; zigzag
+ *              chevron beads can fill the joints between them
  *   2. holes   funnel-countersunk bores through the hubs along z —
  *              round eyes, vertically stretched slots, side-by-side
  *              pairs, optionally sunk into a square recessed panel
@@ -202,8 +202,12 @@ type Plan = {
   segs: Seg[]
   holes: Hole[]
   panel: Panel
-  planes: Float32Array
-  planeK: number
+  // the cut crossfades between two adjacent plane sets
+  planesA: Float32Array
+  planeKA: number
+  planesB: Float32Array
+  planeKB: number
+  facetMix: number
   neckK: number
   holeFunnel: number
   seed: number
@@ -370,6 +374,29 @@ function computePlan(p: Params): Plan {
     })
   }
 
+  /* needle tips thinner than the sampling grid fragment into floating
+     crumbs (and unprintable islands) — floor every limb radius at just
+     over one refine-grid cell in world units. Radii live in plan units,
+     so the floor is divided by the world scale the piece will get. */
+  {
+    let sy0 = Infinity
+    let sy1 = -Infinity
+    for (const h of hubs) {
+      sy0 = Math.min(sy0, h.cy - h.ry)
+      sy1 = Math.max(sy1, h.cy + h.ry)
+    }
+    for (const s of segs) {
+      const r = Math.max(s.ra, s.rb)
+      sy0 = Math.min(sy0, s.ay - r, s.by - r)
+      sy1 = Math.max(sy1, s.ay + r, s.by + r)
+    }
+    const tipFloor = (0.017 * Math.max(0.001, sy1 - sy0)) / p.height
+    for (const s of segs) {
+      s.ra = Math.max(s.ra, tipFloor)
+      s.rb = Math.max(s.rb, tipFloor)
+    }
+  }
+
   /* holes — every pierced body gets one; extras stack inside the primary.
      Strong `eyes` pulls the whole cluster onto the primary body instead
      (twin eyes, triple slots) and fans it out horizontally. */
@@ -414,7 +441,11 @@ function computePlan(p: Params): Plan {
     }
   }
 
-  const kind = Math.max(0, Math.min(2, Math.round(p.facetKind)))
+  // continuous cut: 0..1 fades diamond → dodeca, 1..2 dodeca → icosa
+  const kf = Math.max(0, Math.min(2, p.facetKind))
+  const kLo = kf >= 1 ? 1 : 0
+  const setA = PLANE_SETS[kLo]
+  const setB = PLANE_SETS[kLo + 1]
 
   /* bounds — swept over every primitive, padded for carve + blend */
   let x1 = 0
@@ -450,8 +481,11 @@ function computePlan(p: Params): Plan {
     segs,
     holes,
     panel,
-    planes: PLANE_SETS[kind].n,
-    planeK: PLANE_SETS[kind].k,
+    planesA: setA.n,
+    planeKA: setA.k,
+    planesB: setB.n,
+    planeKB: setB.k,
+    facetMix: kf - kLo,
     neckK: p.neck * Math.min(...hubs.map((h) => h.rx)),
     holeFunnel: p.funnel,
     seed,
@@ -475,7 +509,7 @@ function computePlan(p: Params): Plan {
 const TEX_BAND = 0.09
 
 function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
-  const { S, hubs, minis, segs, holes, panel, planes, planeK, neckK } = plan
+  const { S, hubs, minis, segs, holes, panel, planesA, planeKA, planesB, planeKB, facetMix, neckK } = plan
   const x = wx / S
   const y = wy / S
   const z = wz / S
@@ -490,12 +524,21 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     const m = Math.min(h.rx, h.ry, h.rz)
     let dh = (Math.hypot(qx, qy, qz) - 1) * m
     if (h.w > 0) {
-      let df = -Infinity
-      for (let k = 0; k < planes.length; k += 3) {
-        const t = qx * planes[k] + qy * planes[k + 1] + qz * planes[k + 2]
-        if (t > df) df = t
+      let dfA = -Infinity
+      for (let k = 0; k < planesA.length; k += 3) {
+        const t = qx * planesA[k] + qy * planesA[k + 1] + qz * planesA[k + 2]
+        if (t > dfA) dfA = t
       }
-      dh += ((df - planeK) * m - dh) * h.w
+      let f = dfA - planeKA
+      if (facetMix > 0) {
+        let dfB = -Infinity
+        for (let k = 0; k < planesB.length; k += 3) {
+          const t = qx * planesB[k] + qy * planesB[k + 1] + qz * planesB[k + 2]
+          if (t > dfB) dfB = t
+        }
+        f += (dfB - planeKB - f) * facetMix
+      }
+      dh += (f * m - dh) * h.w
     }
     d = i === 0 ? dh : smin(d, dh, neckK)
   }

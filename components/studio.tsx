@@ -5,7 +5,6 @@ import {
   DEFAULT_PARAMS,
   NUDGE_PARAMS,
   PARAM_RANGES,
-  PRESETS,
   type Params,
   type ParamKey,
 } from "@/lib/engine"
@@ -70,9 +69,6 @@ export function Studio() {
             }
             if (typeof obj.seed === "number" && Number.isFinite(obj.seed)) {
               next.seed = Math.floor(obj.seed)
-            }
-            if (typeof obj.preset === "string" && PRESETS.includes(obj.preset)) {
-              next.preset = obj.preset
             }
             return next
           })

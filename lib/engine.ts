@@ -1,16 +1,20 @@
 /**
  * The totem motor's public parameter space.
  *
- * One formal system covers every reference piece: a vertical totem of
- * one to four hub bodies stacked on a shared axis — each hub a squashed
- * sphere that can crystallise into a faceted polyhedron (diamond,
- * dodecahedron, icosahedron) — pierced by funnel-recessed through-holes
+ * ONE formal system, no named types: every design is a point in the same
+ * continuous parameter space — a vertical totem of one to four hub
+ * bodies stacked on a shared axis — each hub a squashed sphere that can
+ * crystallise into a faceted polyhedron (the cut crossfades diamond →
+ * dodecahedron → icosahedron) — pierced by funnel-recessed through-holes
  * (round eyes, tall slots, sunken square panels), and sprouting radial
  * limbs: antenna prongs from the crown, tapered legs from the base,
  * short side arms from the equators, teat nubs underneath. The whole
  * body is chip-carved with a hammered peen or directional gouge.
- * Each preset is one of the reference pieces; the sliders move through
- * the space between them.
+ *
+ * Variety comes from the seed alone: genParams() blends between internal
+ * anchor recipes (the reference pieces, kept only as gravity wells of the
+ * sampler — they have no names in the UI and every blend between them is
+ * legal) and jitters outward from there. The sliders then move anywhere.
  *
  * This module is UI-facing and dependency-free. The geometry itself is
  * built in lib/totem.ts (SDF + marching cubes) and mounted by
@@ -67,7 +71,7 @@ export type ParamKey =
 
 export type ParamRange = { min: number; max: number; step: number }
 
-export type Params = { preset: string; seed: number } & Record<ParamKey, number>
+export type Params = { seed: number } & Record<ParamKey, number>
 
 export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   height: { min: 1.8, max: 4.4, step: 0.05 },
@@ -78,7 +82,7 @@ export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   flat: { min: 0.35, max: 1, step: 0.01 },
   neck: { min: 0.02, max: 0.5, step: 0.01 },
   facet: { min: 0, max: 1, step: 0.01 },
-  facetKind: { min: 0, max: 2, step: 1 },
+  facetKind: { min: 0, max: 2, step: 0.01 },
   facetUp: { min: 0, max: 1, step: 0.01 },
   zig: { min: 0, max: 1, step: 0.01 },
   holes: { min: 0, max: 3, step: 1 },
@@ -104,9 +108,11 @@ export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   armTilt: { min: -0.6, max: 0.6, step: 0.01 },
   nubs: { min: 0, max: 3, step: 1 },
   tex: { min: 0, max: 1, step: 0.01 },
-  texScale: { min: 8, max: 48, step: 1 },
+  texScale: { min: 8, max: 64, step: 1 },
   gouge: { min: 0, max: 1, step: 0.01 },
 }
+
+const PARAM_KEYS = Object.keys(PARAM_RANGES) as ParamKey[]
 
 /** How the controls panel groups the parameters. */
 export const SECTIONS: {
@@ -187,7 +193,11 @@ export const SECTIONS: {
 ]
 
 /**
- * The reference pieces, one preset each:
+ * Anchor recipes — the reference pieces, kept purely as scaffolding for
+ * the seed sampler. They are NOT user-facing types: the generator blends
+ * two or three of them at random weights and jitters from there, so the
+ * whole space between and around them is one continuous family.
+ *
  *  - tinde:      one great lens body, three antennae, four legs, one
  *                funneled eye
  *  - troll:      horned head with twin eyes and ear stubs over two long
@@ -203,8 +213,14 @@ export const SECTIONS: {
  *                of three slots
  *  - spira:      slotted tall body under a pierced head, cross arms,
  *                tripod legs
+ *  - rombe:      three diamond-cut bodies stacked point to point, each
+ *                pierced, on two short legs
+ *  - sikksakk:   two pierced spiked bodies joined by a stack of zigzag
+ *                chevrons
+ *  - søyle:      a ribbed column of flat discs and chevrons, eared cup
+ *                on top, no holes and no legs
  */
-const BASE: Record<string, Record<ParamKey, number>> = {
+const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   tinde: {
     height: 3.9, nodes: 1, taper: 1, belly: 0.95, squash: 1.1, flat: 0.55,
     neck: 0.2,
@@ -214,7 +230,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0.55, limbR: 0.09,
     prongs: 3, prongLen: 1.65, spread: 0.35, prongTaper: 0.14, spout: 0,
     arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
-    tex: 0.8, texScale: 32, gouge: 0.2,
+    tex: 0.8, texScale: 36, gouge: 0.2,
   },
   troll: {
     height: 3.4, nodes: 2, taper: 1.25, belly: 0.62, squash: 1.1, flat: 0.75,
@@ -225,7 +241,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0, limbR: 0.105,
     prongs: 2, prongLen: 0.6, spread: 0.85, prongTaper: 0.18, spout: 0.5,
     arms: 1, armLen: 0.3, armTilt: 0.02, nubs: 0,
-    tex: 0.75, texScale: 32, gouge: 0.35,
+    tex: 0.75, texScale: 36, gouge: 0.35,
   },
   lykt: {
     height: 3.8, nodes: 2, taper: 0.6, belly: 0.82, squash: 0.95, flat: 0.8,
@@ -236,7 +252,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0.5, limbR: 0.105,
     prongs: 1, prongLen: 0.5, spread: 0, prongTaper: 0.6, spout: 0,
     arms: 2, armLen: 0.32, armTilt: 0, nubs: 1,
-    tex: 0.85, texScale: 34, gouge: 0,
+    tex: 0.85, texScale: 38, gouge: 0,
   },
   edderkopp: {
     height: 3.2, nodes: 1, taper: 1, belly: 0.85, squash: 1, flat: 0.95,
@@ -247,7 +263,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 1, limbR: 0.095,
     prongs: 2, prongLen: 1.3, spread: 0.12, prongTaper: 0.3, spout: 0,
     arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
-    tex: 0.7, texScale: 36, gouge: 0.15,
+    tex: 0.7, texScale: 40, gouge: 0.15,
   },
   varde: {
     height: 4.1, nodes: 3, taper: 0.85, belly: 0.68, squash: 0.9, flat: 0.7,
@@ -258,7 +274,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0, limbR: 0.085,
     prongs: 2, prongLen: 1.65, spread: 0.9, prongTaper: 0.2, spout: 0.4,
     arms: 3, armLen: 0.36, armTilt: 0.02, nubs: 2,
-    tex: 0.85, texScale: 32, gouge: 0.5,
+    tex: 0.85, texScale: 36, gouge: 0.5,
   },
   krystall: {
     height: 4.0, nodes: 2, taper: 0.72, belly: 0.88, squash: 0.95, flat: 0.85,
@@ -269,7 +285,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0, limbR: 0.11,
     prongs: 4, prongLen: 1.7, spread: 0.12, prongTaper: 0.75, spout: 0,
     arms: 1, armLen: 0.14, armTilt: 0, nubs: 0,
-    tex: 0.8, texScale: 30, gouge: 0.7,
+    tex: 0.8, texScale: 34, gouge: 0.7,
   },
   kandelaber: {
     height: 4.0, nodes: 1, taper: 1, belly: 1.0, squash: 1.25, flat: 0.5,
@@ -280,7 +296,7 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0.3, limbR: 0.105,
     prongs: 4, prongLen: 1.3, spread: 0.05, prongTaper: 0.8, spout: 0,
     arms: 1, armLen: 0.2, armTilt: 0, nubs: 1,
-    tex: 0.85, texScale: 34, gouge: 0.2,
+    tex: 0.85, texScale: 38, gouge: 0.2,
   },
   spira: {
     height: 4.1, nodes: 2, taper: 0.5, belly: 0.88, squash: 1.35, flat: 0.65,
@@ -291,23 +307,44 @@ const BASE: Record<string, Record<ParamKey, number>> = {
     around: 0.45, limbR: 0.1,
     prongs: 1, prongLen: 0.55, spread: 0, prongTaper: 0.55, spout: 0,
     arms: 2, armLen: 0.45, armTilt: 0.03, nubs: 1,
-    tex: 0.9, texScale: 38, gouge: 0.15,
+    tex: 0.9, texScale: 42, gouge: 0.15,
+  },
+  rombe: {
+    height: 3.9, nodes: 3, taper: 0.95, belly: 0.8, squash: 1.0, flat: 0.5,
+    neck: 0.06,
+    facet: 1, facetKind: 0, facetUp: 1, zig: 0,
+    holes: 3, holeR: 0.17, funnel: 0.15, slot: 0, eyes: 0, panel: 0,
+    legs: 2, legLen: 0.7, legSplay: 0.35, legBend: 0, legTaper: 0.5,
+    around: 0, limbR: 0.09,
+    prongs: 0, prongLen: 0.3, spread: 0, prongTaper: 0.5, spout: 0,
+    arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
+    tex: 0.5, texScale: 30, gouge: 0.4,
+  },
+  sikksakk: {
+    height: 4.0, nodes: 2, taper: 1.0, belly: 0.72, squash: 0.95, flat: 0.55,
+    neck: 0.1,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0.8,
+    holes: 2, holeR: 0.2, funnel: 0.5, slot: 0, eyes: 0, panel: 0,
+    legs: 2, legLen: 1.3, legSplay: 0.45, legBend: 0.1, legTaper: 0.2,
+    around: 0, limbR: 0.08,
+    prongs: 2, prongLen: 1.2, spread: 0.55, prongTaper: 0.16, spout: 0,
+    arms: 1, armLen: 0.25, armTilt: 0, nubs: 0,
+    tex: 0.9, texScale: 40, gouge: 0.3,
+  },
+  søyle: {
+    height: 4.4, nodes: 4, taper: 1.0, belly: 0.72, squash: 0.6, flat: 1.0,
+    neck: 0.04,
+    facet: 0, facetKind: 0, facetUp: 0, zig: 0.85,
+    holes: 0, holeR: 0.15, funnel: 0.2, slot: 0, eyes: 0, panel: 0,
+    legs: 0, legLen: 0.6, legSplay: 0.2, legBend: 0.05, legTaper: 0.5,
+    around: 0.5, limbR: 0.08,
+    prongs: 0, prongLen: 0.4, spread: 0, prongTaper: 0.7, spout: 0.9,
+    arms: 1, armLen: 0.12, armTilt: 0.05, nubs: 0,
+    tex: 0.35, texScale: 24, gouge: 0.05,
   },
 }
 
-export const PRESETS: readonly string[] = Object.keys(BASE)
-
-/** Body tint per family — dark bronzes and oiled walnuts like the pieces. */
-export const PRESET_COLORS: Record<string, string> = {
-  tinde: "#6b4a30",
-  troll: "#4a2e20",
-  lykt: "#71503a",
-  edderkopp: "#3a2a22",
-  varde: "#503a2b",
-  krystall: "#5e4128",
-  kandelaber: "#332620",
-  spira: "#453121",
-}
+const ANCHORS: Record<ParamKey, number>[] = Object.values(ANCHOR_RECIPES)
 
 /** Which parameter each two-finger scroll axis nudges. */
 export const NUDGE_PARAMS: { vertical?: ParamKey; horizontal?: ParamKey } = {
@@ -319,17 +356,7 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 9000) + 1000
 }
 
-/**
- * The canonical design of a preset family. Deliberately NOT seed-jittered:
- * picking a preset reproduces the reference piece exactly — the seed only
- * phases the carve noise and the small asymmetries.
- */
-export function genParams(seed: number, preset: string): Params {
-  const base = BASE[preset] ?? BASE[PRESETS[0]]
-  return { preset: BASE[preset] ? preset : PRESETS[0], seed, ...base }
-}
-
-// mulberry32 — tiny deterministic PRNG for shuffle jitter
+// mulberry32 — tiny deterministic PRNG for the design sampler
 function rng(seed: number) {
   let a = seed >>> 0
   return () => {
@@ -341,48 +368,72 @@ function rng(seed: number) {
   }
 }
 
-// how far shuffle may wander from the family base: fraction of the full
-// range for continuous params, absolute ± for integer ones
+// how far a sampled design may wander beyond its anchor blend: fraction
+// of the full range for continuous params, absolute ± for integer ones
 const JITTER: Record<ParamKey, number> = {
   height: 0.1, nodes: 1, taper: 0.15, belly: 0.12, squash: 0.15, flat: 0.12,
   neck: 0.15,
-  facet: 0.15, facetKind: 1, facetUp: 0.2, zig: 0.15,
+  facet: 0.15, facetKind: 0.25, facetUp: 0.2, zig: 0.15,
   holes: 1, holeR: 0.15, funnel: 0.2, slot: 0.15, eyes: 0.15, panel: 0.1,
   legs: 1, legLen: 0.15, legSplay: 0.15, legBend: 0.2, legTaper: 0.15,
   around: 0.15, limbR: 0.12,
   prongs: 1, prongLen: 0.18, spread: 0.15, prongTaper: 0.15, spout: 0.2,
   arms: 1, armLen: 0.2, armTilt: 0.15, nubs: 1,
-  tex: 0.12, texScale: 5, gouge: 0.2,
+  tex: 0.12, texScale: 8, gouge: 0.2,
 }
 
-// structure that collapses to zero stays zero — it defines the family
-const ZERO_LOCKED: ParamKey[] = [
-  "facet", "zig", "holes", "slot", "eyes", "panel",
-  "legs", "prongs", "spout", "arms", "nubs",
-]
+/**
+ * THE generator: seed → design. One call covers the whole space — it
+ * picks two anchors (sometimes leaning on a third), blends them at a
+ * random weight, jitters every parameter, then applies a little
+ * structural hygiene. Deterministic: the same seed always rebuilds the
+ * same design.
+ */
+export function genParams(seed: number): Params {
+  const s = (seed | 0) || 1
+  const rnd = rng(s * 2654435761)
 
-/** A seeded variation within a preset family. */
-export function randomizeParams(seed: number, preset: string): Params {
-  const p = genParams(seed, preset)
-  const rnd = rng(seed * 2654435761)
-  for (const k of Object.keys(PARAM_RANGES) as ParamKey[]) {
+  // two anchor recipes at a random blend...
+  const n = ANCHORS.length
+  const a = Math.floor(rnd() * n)
+  let b = Math.floor(rnd() * (n - 1))
+  if (b >= a) b++
+  const t = rnd()
+  // ...with an occasional pull toward a third
+  const c = Math.floor(rnd() * n)
+  const w3 = rnd() < 0.4 ? rnd() * 0.35 : 0
+
+  const p = { seed: s } as Params
+  for (const k of PARAM_KEYS) {
     const r = PARAM_RANGES[k]
+    let v = ANCHORS[a][k] + (ANCHORS[b][k] - ANCHORS[a][k]) * t
+    v += (ANCHORS[c][k] - v) * w3
     const j = JITTER[k]
-    if (j === 0) continue
-    let v: number
-    if (r.step >= 1) {
-      v = p[k] + Math.round((rnd() - 0.5) * 2 * j)
-    } else {
-      v = p[k] + (rnd() - 0.5) * 2 * j * (r.max - r.min)
-    }
+    if (r.step >= 1) v += Math.round((rnd() - 0.5) * 2 * j)
+    else v += (rnd() - 0.5) * 2 * j * (r.max - r.min)
     v = Math.min(r.max, Math.max(r.min, v))
     p[k] = r.step >= 1 ? Math.round(v) : +v.toFixed(3)
   }
-  const base = BASE[p.preset]
-  for (const k of ZERO_LOCKED) {
-    if (base[k] === 0) p[k] = 0
+
+  // the cut axis is free — no anchor owns a facet shape
+  p.facetKind = +(rnd() * 2).toFixed(2)
+
+  // faceted bodies are a strong motif in the references — lean a slice
+  // of the space hard into crystal
+  if (rnd() < 0.18) p.facet = Math.max(p.facet, +(0.75 + rnd() * 0.25).toFixed(3))
+
+  // features that ride on holes make no sense without them
+  if (p.holes === 0) {
+    p.slot = 0
+    p.eyes = 0
+    p.panel = 0
+  }
+  // a totem with nothing at all sprouting or pierced reads as a blob
+  if (p.holes === 0 && p.legs === 0 && p.prongs === 0 && p.arms === 0) {
+    p.holes = 1
   }
   return p
 }
 
-export const DEFAULT_PARAMS: Params = genParams(1204, "tinde")
+/** The opening design: three pierced bodies, crossing antennae, hammered. */
+export const DEFAULT_PARAMS: Params = { seed: 1204, ...ANCHOR_RECIPES.varde }

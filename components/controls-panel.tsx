@@ -5,15 +5,12 @@ import {
   Shuffle,
   SlidersHorizontal,
   ChevronDown,
-  ChevronUp,
   Download,
 } from "lucide-react"
 import {
   PARAM_RANGES,
-  PRESETS,
   SECTIONS,
   genParams,
-  randomizeParams,
   randomSeed,
   type ParamKey,
   type Params,
@@ -26,14 +23,6 @@ const ICON_BTN =
   `flex h-10 w-10 items-center justify-center rounded-full border ${HAIR} text-black transition active:scale-95 dark:text-white`
 const ICON_BTN_SOLID =
   "flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition active:scale-95 dark:bg-white dark:text-black"
-
-function chipClass(active: boolean) {
-  return `min-h-[32px] rounded-full border px-3 text-[11px] font-medium capitalize transition active:scale-95 ${
-    active
-      ? "border-transparent bg-black text-white dark:bg-white dark:text-black"
-      : `${HAIR} text-black dark:text-white`
-  }`
-}
 
 function Row({
   label,
@@ -57,11 +46,11 @@ function Row({
         locked ? "opacity-30" : ""
       }`}
     >
-      {/* tap the label to lock this value against randomize */}
+      {/* tap the label to lock this value against shuffle */}
       <button
         onClick={onToggleLock}
         aria-pressed={locked}
-        title={locked ? "Locked — tap to let randomize change it" : "Tap to lock against randomize"}
+        title={locked ? "Locked — tap to let shuffle change it" : "Tap to lock against shuffle"}
         className="w-20 shrink-0 text-left text-[11px] uppercase tracking-widest text-black dark:text-white"
       >
         {label}
@@ -95,14 +84,10 @@ export function ControlsPanel({
   onToggleDetail: () => void
   onChange: (p: Params) => void
 }) {
-  // collapsed → half (preset, chips) → full (every parameter)
-  const [mode, setMode] = useState<"collapsed" | "half" | "full">("collapsed")
-  const open = mode !== "collapsed"
-  // tapped-locked parameters survive randomize untouched
+  // one generator, no types: the panel is just seed + shuffle + sliders
+  const [open, setOpen] = useState(false)
+  // tapped-locked parameters survive shuffle untouched
   const [locked, setLocked] = useState<ReadonlySet<ParamKey>>(new Set())
-  // shuffle roams across ALL presets unless the type is locked by
-  // tapping the seed number next to the dropdown
-  const [presetLocked, setPresetLocked] = useState(false)
 
   const set = (patch: Partial<Params>) => onChange({ ...params, ...patch })
 
@@ -115,10 +100,7 @@ export function ControlsPanel({
     })
 
   const shuffle = () => {
-    const preset = presetLocked
-      ? params.preset
-      : PRESETS[Math.floor(Math.random() * PRESETS.length)]
-    const next = randomizeParams(randomSeed(), preset)
+    const next = genParams(randomSeed())
     for (const k of locked) next[k] = params[k]
     onChange(next)
   }
@@ -128,35 +110,10 @@ export function ControlsPanel({
       <div className={`pointer-events-auto w-full max-w-md rounded-3xl border ${HAIR} bg-white dark:bg-black`}>
         {/* header row */}
         <div className="flex items-center gap-1.5 p-2.5">
-          <div className={`relative flex h-10 items-center rounded-full border ${HAIR}`}>
-            <select
-              value={params.preset}
-              onChange={(e) => onChange(genParams(params.seed, e.target.value))}
-              aria-label="Preset"
-              className="h-full appearance-none rounded-full bg-transparent pl-3.5 pr-8 text-xs font-medium text-black outline-none dark:text-white [&>option]:bg-white dark:[&>option]:bg-black"
-            >
-              {PRESETS.map((fam) => (
-                <option key={fam} value={fam}>
-                  {fam.charAt(0).toUpperCase() + fam.slice(1)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 h-3.5 w-3.5 text-black/60 dark:text-white/60"
-              strokeWidth={2.2}
-            />
-          </div>
           <button
-            onClick={() => setPresetLocked((l) => !l)}
-            aria-pressed={presetLocked}
-            title={
-              presetLocked
-                ? "Type locked — shuffle stays in this preset"
-                : "Tap to lock the type against shuffle"
-            }
-            className={`px-1 text-[11px] tabular-nums tracking-widest text-black/60 transition-opacity dark:text-white/60 ${
-              presetLocked ? "opacity-30" : ""
-            }`}
+            onClick={() => set({ seed: randomSeed() })}
+            title="New carve seed — same form"
+            className={`flex h-10 items-center rounded-full border ${HAIR} px-3.5 text-xs font-medium tabular-nums tracking-widest text-black transition active:scale-95 dark:text-white`}
           >
             {params.seed}
           </button>
@@ -179,7 +136,7 @@ export function ControlsPanel({
             <Download className="h-4 w-4" strokeWidth={2.2} />
           </button>
           <button
-            onClick={() => setMode(open ? "collapsed" : "half")}
+            onClick={() => setOpen((o) => !o)}
             aria-label={open ? "Hide controls" : "Show controls"}
             aria-expanded={open}
             className={ICON_BTN}
@@ -192,19 +149,9 @@ export function ControlsPanel({
           </button>
         </div>
 
-        {/* expandable body */}
+        {/* expandable body — every parameter of the one system */}
         {open && (
           <div className="max-h-[56vh] overflow-y-auto px-4 pb-4">
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              <button
-                onClick={() => set({ seed: randomSeed() })}
-                className={chipClass(false)}
-                title="New seed, same parameters"
-              >
-                reseed
-              </button>
-            </div>
-
             {isDesktop && (
               <button
                 onClick={onToggleDetail}
@@ -231,44 +178,24 @@ export function ControlsPanel({
               </button>
             )}
 
-            {/* half ↔ full: every parameter lives behind this expander */}
-            <button
-              onClick={() => setMode(mode === "full" ? "half" : "full")}
-              aria-expanded={mode === "full"}
-              className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-2xl border ${HAIR} py-2 text-[10px] font-semibold uppercase tracking-widest text-black/70 transition active:scale-[0.99] dark:text-white/70`}
-            >
-              {mode === "full" ? (
-                <>
-                  fewer controls
-                  <ChevronUp className="h-3.5 w-3.5" strokeWidth={2.2} />
-                </>
-              ) : (
-                <>
-                  all parameters
-                  <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.2} />
-                </>
-              )}
-            </button>
-
-            {mode === "full" &&
-              SECTIONS.map(({ title, keys }) => (
-                <div key={title} className="mb-2">
-                  <p className="pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-black/50 dark:text-white/50">
-                    {title}
-                  </p>
-                  {keys.map(({ key, label }) => (
-                    <Row
-                      key={key}
-                      label={label}
-                      value={params[key]}
-                      range={PARAM_RANGES[key]}
-                      locked={locked.has(key)}
-                      onChange={(v) => set({ [key]: v } as Partial<Params>)}
-                      onToggleLock={() => toggleLock(key)}
-                    />
-                  ))}
-                </div>
-              ))}
+            {SECTIONS.map(({ title, keys }) => (
+              <div key={title} className="mb-2">
+                <p className="pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-black/50 dark:text-white/50">
+                  {title}
+                </p>
+                {keys.map(({ key, label }) => (
+                  <Row
+                    key={key}
+                    label={label}
+                    value={params[key]}
+                    range={PARAM_RANGES[key]}
+                    locked={locked.has(key)}
+                    onChange={(v) => set({ [key]: v } as Partial<Params>)}
+                    onToggleLock={() => toggleLock(key)}
+                  />
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>

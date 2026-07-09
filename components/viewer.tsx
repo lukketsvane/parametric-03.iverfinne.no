@@ -1,76 +1,26 @@
 "use client"
 
-import { Canvas, useThree } from "@react-three/fiber"
+import { Canvas } from "@react-three/fiber"
 import {
   ContactShadows,
   Environment,
   Lightformer,
   OrbitControls,
 } from "@react-three/drei"
-import { Suspense, useEffect, useMemo, useRef, useState } from "react"
-import * as THREE from "three"
-import type { Params } from "@/lib/engine"
-import { EngineMesh } from "./engine-mesh"
-import { GestureParams, type NudgeAxis } from "./gesture-params"
+import { Suspense } from "react"
 
 /**
- * Frame the piece whenever its size changes meaningfully: tall or wide
- * designs used to overflow the fixed camera. The view direction the user
- * chose is preserved — only the distance and target height adapt.
+ * The viewer stage: camera, softbox lighting, ground shadow and orbit
+ * controls. The generator's mesh mounts inside the grounded group below —
+ * the previous engine has been removed, so for now it holds nothing.
  */
-function FitCamera({ fit }: { fit: { r: number; cy: number } | null }) {
-  const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls) as
-    | { target: THREE.Vector3; update?: () => void }
-    | null
-  const invalidate = useThree((s) => s.invalidate)
-  const lastR = useRef(0)
-  useEffect(() => {
-    if (!fit || !controls) return
-    if (lastR.current && Math.abs(fit.r - lastR.current) / lastR.current < 0.12) return
-    lastR.current = fit.r
-    // the mesh is grounded at y=0 inside a group at y=-0.85
-    const ty = Math.min(1.2, Math.max(-0.05, fit.cy - 0.85 + 0.12))
-    controls.target.set(0, ty, 0)
-    const dist = Math.min(
-      15,
-      Math.max(3.2, (fit.r * 1.45) / Math.tan((16 * Math.PI) / 180)),
-    )
-    const dir = camera.position.clone().sub(controls.target)
-    if (dir.lengthSq() < 1e-6) dir.set(2.6, 1.85, 6.6)
-    camera.position.copy(controls.target).add(dir.setLength(dist))
-    controls.update?.()
-    invalidate()
-  }, [fit, controls, camera, invalidate])
-  return null
-}
-
-export function Viewer({
-  params,
-  dark,
-  hiDetail,
-  mobile,
-  onNudge,
-}: {
-  params: Params
-  dark: boolean
-  hiDetail: boolean
-  mobile: boolean
-  onNudge: (axis: NudgeAxis, deltaPx: number) => void
-}) {
+export function Viewer({ dark }: { dark: boolean }) {
   const bg = dark ? "#000000" : "#ffffff"
-  const shadow = hiDetail ? 2048 : 1024
-  // refresh the baked contact shadow once per parameter change
-  const shadowSeq = useRef(0)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const shadowKey = useMemo(() => ++shadowSeq.current, [params, dark])
-  // measured size of the current mesh, reported after each rebuild
-  const [fit, setFit] = useState<{ r: number; cy: number } | null>(null)
   return (
     <Canvas
       shadows
       frameloop="demand"
-      dpr={hiDetail ? [1, 3] : [1, 2]}
+      dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: "high-performance" }}
       camera={{ position: [2.6, 2.2, 6.6], fov: 32 }}
       className="touch-none"
@@ -80,11 +30,10 @@ export function Viewer({
 
       <ambientLight intensity={0.35} />
       <directionalLight
-        key={shadow}
         position={[4, 7, 3]}
         intensity={1.2}
         castShadow
-        shadow-mapSize={[shadow, shadow]}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0002}
         shadow-camera-left={-6}
         shadow-camera-right={6}
@@ -97,12 +46,8 @@ export function Viewer({
 
       <Suspense fallback={null}>
         <group position={[0, -0.85, 0]}>
-          <EngineMesh
-            params={params}
-            hiDetail={hiDetail}
-            mobile={mobile}
-            onFit={(r, cy) => setFit({ r, cy })}
-          />
+          {/* ── new generator's mesh mounts here ── */}
+
           {/* ground: an invisible plane that only receives the cast shadow —
               light mode only, dark mode floats the piece in the void */}
           {!dark && (
@@ -112,13 +57,12 @@ export function Viewer({
                 <shadowMaterial transparent opacity={0.16} />
               </mesh>
               <ContactShadows
-                key={shadowKey}
                 position={[0, 0.001, 0]}
                 opacity={0.28}
                 scale={9}
                 blur={2.2}
                 far={2.6}
-                resolution={mobile ? 256 : 512}
+                resolution={512}
                 frames={50}
                 color="#000000"
               />
@@ -159,8 +103,6 @@ export function Viewer({
         </Environment>
       </Suspense>
 
-      <FitCamera fit={fit} />
-      <GestureParams onNudge={onNudge} />
       <OrbitControls
         target={[0, 0.35, 0]}
         enablePan={false}

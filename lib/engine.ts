@@ -462,6 +462,34 @@ export function genParams(seed: number): Params {
   if (p.holes === 0 && p.legs === 0 && p.prongs === 0 && p.arms === 0) {
     p.holes = 1
   }
+
+  // chevrons commit or vanish — a faint zig only opens razor-thin flanges
+  if (p.zig < 0.25) p.zig = 0
+  else if (p.zig < 0.45) p.zig = 0.45
+
+  // stances that can actually stand: never one leg, three legs make a
+  // tripod, five or more walk all the way around, two spread their feet
+  if (p.legs === 1) p.legs = 2
+  if (p.legs === 3) p.around = Math.max(p.around, 0.45)
+  if (p.legs >= 5) p.around = Math.max(p.around, 0.75)
+  if (p.legs === 2) p.legSplay = Math.max(p.legSplay, 0.18)
+  p.legTaper = Math.max(p.legTaper, 0.22)
+
+  // crowded crowns read as combs: four or more prongs are either parallel
+  // candle fingers or a wide fan, never the mush in between — and shorter.
+  // The twin fold doubles every prong, so it carries fewer.
+  if (p.prongs >= 4) {
+    p.spread = p.spread < 0.4 ? 0.08 : 0.8
+    p.prongLen = Math.min(p.prongLen, 1.5)
+  }
+  if (p.twin > 0 && p.prongs > 3) p.prongs = 3
+
+  // heavy peen erases crystal edges — faceted bodies carve shallower
+  if (p.facet > 0.6) {
+    p.tex = Math.min(p.tex, 0.6)
+    p.gouge = Math.min(p.gouge, 0.4)
+    p.texScale = Math.max(p.texScale, 32)
+  }
   return p
 }
 

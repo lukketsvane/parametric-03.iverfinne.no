@@ -96,6 +96,9 @@ export function Viewer({
       {/* the ebonised body is near-black — a firmer rim keeps its edge
           readable against the dark-mode void */}
       <directionalLight position={[-6, 3, -2]} intensity={0.5} />
+      {/* soft frontal fill so bores, sunken panels and funnel walls stay
+          legible instead of collapsing into the silhouette */}
+      <directionalLight position={[1.5, 2.5, 8]} intensity={0.4} />
 
       <Suspense fallback={null}>
         <group position={[0, -0.85, 0]}>

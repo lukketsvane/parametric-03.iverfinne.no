@@ -205,14 +205,14 @@ export function EngineMesh({
   return (
     <mesh ref={meshRef} castShadow receiveShadow>
       {/* ebonised near-black: the body stays deep and dark, the hammered
-          relief carries the highlights */}
+          relief carries the highlights — waxed-wood sheen, not gunmetal */}
       <meshPhysicalMaterial
-        color="#151110"
-        roughness={0.42}
-        metalness={0.4}
-        clearcoat={0.35}
-        clearcoatRoughness={0.4}
-        envMapIntensity={1.0}
+        color="#1a1412"
+        roughness={0.38}
+        metalness={0.28}
+        clearcoat={0.5}
+        clearcoatRoughness={0.32}
+        envMapIntensity={1.15}
       />
     </mesh>
   )

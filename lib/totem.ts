@@ -279,9 +279,10 @@ function computePlan(p: Params): Plan {
     b.cy = cy
   }
 
-  /* zigzag beads between separated hubs */
+  /* zigzag beads between separated hubs — gated on a committed zig and
+     floored in height so they read as chunky chevrons, never razor discs */
   const minis: Hub[] = []
-  if (p.zig > 0.02) {
+  if (p.zig > 0.3) {
     for (let i = 1; i < n; i++) {
       const a = hubs[i - 1]
       const b = hubs[i]
@@ -290,7 +291,7 @@ function computePlan(p: Params): Plan {
       if (y1 - y0 < 0.05) continue
       const m = 3
       const rr = Math.min(a.rx, b.rx) * (0.55 + 0.3 * p.zig)
-      const hh = ((y1 - y0) / m) * 0.85
+      const hh = Math.max(((y1 - y0) / m) * 0.85, rr * 0.33)
       for (let k = 0; k < m; k++) {
         const my = y0 + ((k + 0.5) / m) * (y1 - y0)
         minis.push({ cy: my, rx: rr, ry: hh, rz: rr * p.flat, w: 1 })
@@ -308,8 +309,12 @@ function computePlan(p: Params): Plan {
   const segs: Seg[] = []
   const limbR = p.limbR
 
-  // legs — quadratic bows from the base hub, sampled as tapered capsules
+  // legs — quadratic bows from the base hub, sampled as tapered capsules.
+  // Every foot lands on one shared ground line just below the belly so the
+  // piece actually stands: length jitter goes into the sideways reach only,
+  // and legs are always long enough to clear the hub underside.
   const legs = Math.round(p.legs)
+  const legLen = Math.max(p.legLen, bottom.ry * 0.45 + 0.1)
   for (let j = 0; j < legs; j++) {
     const az = (TAU * (j + 0.5)) / legs + Math.PI / 2
     let dx = Math.sin(az)
@@ -318,17 +323,18 @@ function computePlan(p: Params): Plan {
     const dl = Math.hypot(dx, dz) || 1
     dx /= dl
     dz /= dl
-    const L = p.legLen * (1 + 0.03 * jit(j, 3, seed))
-    const ax = dx * bottom.rx * 0.5
+    const L = legLen
+    const reach = p.legSplay * L * (1 + 0.1 * jit(j, 3, seed))
+    const ax = dx * bottom.rx * 0.6
     const ay = bottom.cy - bottom.ry * 0.55
-    const az2 = dz * bottom.rz * 0.5
-    const fx = ax + dx * p.legSplay * L
+    const az2 = dz * bottom.rz * 0.6
+    const fx = ax + dx * reach
     const fy = ay - L
-    const fz = az2 + dz * p.legSplay * L
+    const fz = az2 + dz * reach
     // control point pushed outward for the bowed knee
-    const kx = (ax + fx) / 2 + dx * p.legBend * L * 0.3
+    const kx = (ax + fx) / 2 + dx * p.legBend * L * 0.42
     const ky = (ay + fy) / 2 + L * 0.06 * p.legBend
-    const kz = (az2 + fz) / 2 + dz * p.legBend * L * 0.3
+    const kz = (az2 + fz) / 2 + dz * p.legBend * L * 0.42
     const ra = limbR * 1.2
     const rb = limbR * p.legTaper
     const STEPS = 4
@@ -381,7 +387,8 @@ function computePlan(p: Params): Plan {
     })
   }
 
-  // arms — ±x stub pairs on the largest bodies first
+  // arms — ±x stub pairs on the largest bodies first; girth follows the
+  // host body so stubs read carved-on rather than pinned-in
   const arms = Math.min(Math.round(p.arms), n)
   const bySize = hubs
     .map((h, i) => i)
@@ -390,20 +397,22 @@ function computePlan(p: Params): Plan {
     const h = hubs[bySize[a]]
     const L = p.armLen + h.rx * 0.2
     const ay = h.cy + 0.1 * h.ry * jit(a, 6, seed)
+    const ra = limbR * 1.05 + h.rx * 0.05
     for (const sx of [-1, 1]) {
       segs.push({
         ax: sx * h.rx * 0.75, ay, az: 0,
         bx: sx * (h.rx * 0.75 + L), by: ay + p.armTilt * L, bz: 0,
-        ra: limbR * 0.95, rb: limbR * 0.78,
+        ra, rb: ra * 0.72,
       })
     }
   }
 
-  // nubs — short teats hanging under the base hub
+  // nubs — short teats hanging under the base hub, never reaching past
+  // its underside (a dangling teat must not become the foot)
   const nubs = Math.round(p.nubs)
   for (let k = 0; k < nubs; k++) {
     const dx = (k - (nubs - 1) / 2) * limbR * 3
-    const L = 0.12 + limbR * 2
+    const L = Math.min(0.12 + limbR * 2, bottom.ry * 0.26)
     segs.push({
       ax: dx, ay: bottom.cy - bottom.ry * 0.72, az: 0,
       bx: dx * 1.25, by: bottom.cy - bottom.ry * 0.72 - L, bz: 0,
@@ -605,7 +614,9 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     d = smin(d, (df - PLANE_SETS[0].k) * m, 0.03)
   }
 
-  /* limbs */
+  /* limbs — their raw distance is tracked so the carve can spare them */
+  const dBody = d
+  let dLimb = Infinity
   for (const s of segs) {
     const pax = x - s.ax
     const pay = y - s.ay
@@ -619,6 +630,7 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     const ds =
       Math.hypot(pax - bax * hh, pay - bay * hh, paz - baz * hh) -
       (s.ra + (s.rb - s.ra) * hh)
+    if (ds < dLimb) dLimb = ds
     d = smin(d, ds, 0.04)
   }
 
@@ -642,28 +654,36 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
     d = Math.max(d, -cut)
   }
 
-  /* carve — scalloped peen chips crossfading into directional gouges */
+  /* carve — scalloped peen chips crossfading into directional gouges.
+     Limbs keep a turned-smooth skin: the carve fades wherever a limb, not
+     the body, is the nearest surface, so thin legs stop reading as drips. */
   if (plan.tex > 0 && Math.abs(d) < TEX_BAND) {
-    const s = plan.texScale
-    let disp = 0
-    if (plan.gouge < 1) {
-      // one hammer blow per cell: a shallow cup at each feature point,
-      // crisp ridges standing where neighbouring cups meet
-      const f1 = worleyF1(x * s, y * s, z * s, plan.seed)
-      let cup = 1 - f1 * 1.45
-      if (cup < 0) cup = 0
-      cup *= cup * (3 - 2 * cup)
-      disp += (1 - plan.gouge) * 0.023 * (cup - 0.38)
+    const wLimb = clamp01(0.5 + (dBody - dLimb) * 9)
+    const texAmp = plan.tex * (1 - 0.78 * wLimb)
+    if (texAmp > 0.002) {
+      const s = plan.texScale
+      // hammer physics: fine peen strikes shallow, coarse chips dig deep
+      const depth = Math.min(1.3, Math.max(0.6, 34 / s))
+      let disp = 0
+      if (plan.gouge < 1) {
+        // one hammer blow per cell: a shallow cup at each feature point,
+        // crisp ridges standing where neighbouring cups meet
+        const f1 = worleyF1(x * s, y * s, z * s, plan.seed)
+        let cup = 1 - f1 * 1.45
+        if (cup < 0) cup = 0
+        cup *= cup * (3 - 2 * cup)
+        disp += (1 - plan.gouge) * 0.023 * depth * (cup - 0.38)
+      }
+      if (plan.gouge > 0) {
+        // long strokes: value noise stretched along y, ridged
+        const gou = vnoise3(x * s * 0.9, y * s * 0.28, z * s * 0.9, plan.seed + 7)
+        let ridge = 1 - Math.abs(gou - 0.5) * 2
+        ridge *= ridge * (3 - 2 * ridge)
+        disp += plan.gouge * 0.017 * depth * (ridge - 0.45)
+      }
+      const micro = vnoise3(x * s * 2.7, y * s * 2.7, z * s * 2.7, plan.seed + 13)
+      d += texAmp * (disp + 0.003 * (micro - 0.5))
     }
-    if (plan.gouge > 0) {
-      // long strokes: value noise stretched along y, ridged
-      const gou = vnoise3(x * s * 0.9, y * s * 0.28, z * s * 0.9, plan.seed + 7)
-      let ridge = 1 - Math.abs(gou - 0.5) * 2
-      ridge *= ridge * (3 - 2 * ridge)
-      disp += plan.gouge * 0.017 * (ridge - 0.45)
-    }
-    const micro = vnoise3(x * s * 2.7, y * s * 2.7, z * s * 2.7, plan.seed + 13)
-    d += plan.tex * (disp + 0.003 * (micro - 0.5))
   }
 
   return d * S

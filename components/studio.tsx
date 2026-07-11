@@ -70,6 +70,17 @@ export function Studio() {
             if (typeof obj.seed === "number" && Number.isFinite(obj.seed)) {
               next.seed = Math.floor(obj.seed)
             }
+            // the signature is cosmetic (the piece's title); keep it tame
+            if (typeof obj.sig === "string") {
+              const sig = obj.sig
+                .replace(/[^\p{L}\p{N} .,'’-]/gu, "")
+                .slice(0, 24)
+                .trim()
+              if (sig) next.sig = sig
+              else delete next.sig
+            } else {
+              delete next.sig
+            }
             return next
           })
         }

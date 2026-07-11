@@ -9,7 +9,10 @@
  * (round eyes, tall slots, sunken square panels), and sprouting radial
  * limbs: antenna prongs from the crown, tapered legs from the base,
  * short side arms from the equators, teat nubs underneath. The whole
- * body is chip-carved with a hammered peen or directional gouge.
+ * body is chip-carved with a hammered peen or directional gouge, and
+ * carries a posture: sway leans the spine, drifts the bodies off axis,
+ * twists the crystal cuts and un-mirrors the arms — carvers don't build
+ * plumb, machines do.
  *
  * Variety comes from the seed alone: genParams() blends between internal
  * anchor recipes (the reference pieces, kept only as gravity wells of the
@@ -34,6 +37,7 @@ export type ParamKey =
   | "flat"
   | "neck"
   | "twin"
+  | "sway"
   // crystal
   | "facet"
   | "facetKind"
@@ -60,6 +64,10 @@ export type ParamKey =
   | "spread"
   | "prongTaper"
   | "spout"
+  // lattice
+  | "rings"
+  | "ringR"
+  | "rail"
   // arms & nubs
   | "arms"
   | "armLen"
@@ -72,7 +80,7 @@ export type ParamKey =
 
 export type ParamRange = { min: number; max: number; step: number }
 
-export type Params = { seed: number } & Record<ParamKey, number>
+export type Params = { seed: number; sig?: string } & Record<ParamKey, number>
 
 export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   height: { min: 1.8, max: 4.4, step: 0.05 },
@@ -83,6 +91,7 @@ export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   flat: { min: 0.35, max: 1, step: 0.01 },
   neck: { min: 0.02, max: 0.5, step: 0.01 },
   twin: { min: 0, max: 1, step: 0.01 },
+  sway: { min: 0, max: 1, step: 0.01 },
   facet: { min: 0, max: 1, step: 0.01 },
   facetKind: { min: 0, max: 2, step: 0.01 },
   facetUp: { min: 0, max: 1, step: 0.01 },
@@ -105,6 +114,9 @@ export const PARAM_RANGES: Record<ParamKey, ParamRange> = {
   spread: { min: 0, max: 1, step: 0.01 },
   prongTaper: { min: 0.08, max: 1, step: 0.01 },
   spout: { min: 0, max: 1, step: 0.01 },
+  rings: { min: 0, max: 3, step: 1 },
+  ringR: { min: 0.35, max: 0.95, step: 0.01 },
+  rail: { min: 0, max: 1, step: 0.01 },
   arms: { min: 0, max: 3, step: 1 },
   armLen: { min: 0.08, max: 1.2, step: 0.01 },
   armTilt: { min: -0.6, max: 0.6, step: 0.01 },
@@ -122,7 +134,7 @@ export const SECTIONS: {
   keys: { key: ParamKey; label: string }[]
 }[] = [
   {
-    title: "Stack",
+    title: "Body",
     keys: [
       { key: "height", label: "Height" },
       { key: "nodes", label: "Bodies" },
@@ -132,6 +144,7 @@ export const SECTIONS: {
       { key: "flat", label: "Depth" },
       { key: "neck", label: "Neck" },
       { key: "twin", label: "Twin" },
+      { key: "sway", label: "Sway" },
     ],
   },
   {
@@ -177,6 +190,14 @@ export const SECTIONS: {
     ],
   },
   {
+    title: "Lattice",
+    keys: [
+      { key: "rings", label: "Rings" },
+      { key: "ringR", label: "Ring size" },
+      { key: "rail", label: "Rail" },
+    ],
+  },
+  {
     title: "Arms",
     keys: [
       { key: "arms", label: "Arm pairs" },
@@ -186,7 +207,7 @@ export const SECTIONS: {
     ],
   },
   {
-    title: "Surface",
+    title: "Skin",
     keys: [
       { key: "tex", label: "Carve" },
       { key: "texScale", label: "Grain" },
@@ -224,139 +245,166 @@ export const SECTIONS: {
  *                on top, no holes and no legs
  *  - tvilling:   the twin fold — two pierced lobes side by side sharing
  *                a pinched waist, antennae up and legs down from each
+ *  - lenke:      openwork — a chain of rings and stub-ended bars
+ *                scaffolding up from a solid tapered base, one handle
+ *                arm pair, spout on top
  */
 const ANCHOR_RECIPES: Record<string, Record<ParamKey, number>> = {
   tinde: {
     height: 3.9, nodes: 1, taper: 1, belly: 0.95, squash: 1.1, flat: 0.55,
-    neck: 0.2, twin: 0,
+    neck: 0.2, twin: 0, sway: 0.12,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 1, holeR: 0.2, funnel: 0.8, slot: 0, eyes: 0, panel: 0,
     legs: 4, legLen: 1.35, legSplay: 0.22, legBend: 0.12, legTaper: 0.24,
     around: 0.55, limbR: 0.09,
     prongs: 3, prongLen: 1.65, spread: 0.35, prongTaper: 0.14, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
     tex: 0.8, texScale: 36, gouge: 0.2,
   },
   troll: {
     height: 3.4, nodes: 2, taper: 1.25, belly: 0.62, squash: 1.1, flat: 0.75,
-    neck: 0.26, twin: 0,
+    neck: 0.26, twin: 0, sway: 0.24,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.16, funnel: 0.35, slot: 0, eyes: 1, panel: 0,
     legs: 2, legLen: 1.55, legSplay: 0.3, legBend: 0.6, legTaper: 0.32,
     around: 0, limbR: 0.105,
     prongs: 2, prongLen: 0.6, spread: 0.85, prongTaper: 0.18, spout: 0.5,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 1, armLen: 0.3, armTilt: 0.02, nubs: 0,
     tex: 0.75, texScale: 36, gouge: 0.35,
   },
   lykt: {
     height: 3.8, nodes: 2, taper: 0.6, belly: 0.82, squash: 0.95, flat: 0.8,
-    neck: 0.22, twin: 0,
+    neck: 0.22, twin: 0, sway: 0.08,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.24, funnel: 0.75, slot: 0, eyes: 0, panel: 0,
     legs: 3, legLen: 1.35, legSplay: 0.32, legBend: 0.06, legTaper: 0.5,
     around: 0.5, limbR: 0.105,
     prongs: 1, prongLen: 0.5, spread: 0, prongTaper: 0.6, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 2, armLen: 0.32, armTilt: 0, nubs: 1,
     tex: 0.85, texScale: 38, gouge: 0,
   },
   edderkopp: {
     height: 3.2, nodes: 1, taper: 1, belly: 0.85, squash: 1, flat: 0.95,
-    neck: 0.2, twin: 0,
+    neck: 0.2, twin: 0, sway: 0.06,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 1, holeR: 0.15, funnel: 0.25, slot: 0, eyes: 0, panel: 0,
     legs: 8, legLen: 1.4, legSplay: 0.34, legBend: 0.3, legTaper: 0.3,
     around: 1, limbR: 0.095,
     prongs: 2, prongLen: 1.3, spread: 0.12, prongTaper: 0.3, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
     tex: 0.7, texScale: 40, gouge: 0.15,
   },
   varde: {
     height: 4.1, nodes: 3, taper: 0.85, belly: 0.68, squash: 0.9, flat: 0.7,
-    neck: 0.2, twin: 0,
+    neck: 0.2, twin: 0, sway: 0.16,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 3, holeR: 0.24, funnel: 0.55, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 1.45, legSplay: 0.5, legBend: 0.15, legTaper: 0.28,
     around: 0, limbR: 0.085,
     prongs: 2, prongLen: 1.65, spread: 0.9, prongTaper: 0.2, spout: 0.4,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 3, armLen: 0.36, armTilt: 0.02, nubs: 2,
     tex: 0.85, texScale: 36, gouge: 0.5,
   },
   krystall: {
     height: 4.0, nodes: 2, taper: 0.72, belly: 0.88, squash: 0.95, flat: 0.85,
-    neck: 0.12, twin: 0,
+    neck: 0.12, twin: 0, sway: 0.05,
     facet: 1, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.2, funnel: 0.7, slot: 0, eyes: 0, panel: 0,
     legs: 0, legLen: 0.8, legSplay: 0.2, legBend: 0.1, legTaper: 0.4,
     around: 0, limbR: 0.11,
     prongs: 4, prongLen: 1.7, spread: 0.12, prongTaper: 0.75, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 1, armLen: 0.14, armTilt: 0, nubs: 0,
     tex: 0.8, texScale: 34, gouge: 0.7,
   },
   kandelaber: {
     height: 4.0, nodes: 1, taper: 1, belly: 1.0, squash: 1.25, flat: 0.5,
-    neck: 0.2, twin: 0,
+    neck: 0.2, twin: 0, sway: 0.07,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 3, holeR: 0.11, funnel: 0.12, slot: 1, eyes: 1, panel: 1,
     legs: 4, legLen: 1.25, legSplay: 0.36, legBend: 0.1, legTaper: 0.45,
     around: 0.3, limbR: 0.105,
     prongs: 4, prongLen: 1.3, spread: 0.05, prongTaper: 0.8, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 1, armLen: 0.2, armTilt: 0, nubs: 1,
     tex: 0.85, texScale: 38, gouge: 0.2,
   },
   spira: {
     height: 4.1, nodes: 2, taper: 0.5, belly: 0.88, squash: 1.35, flat: 0.65,
-    neck: 0.3, twin: 0,
+    neck: 0.3, twin: 0, sway: 0.12,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 2, holeR: 0.12, funnel: 0.3, slot: 1, eyes: 0, panel: 0,
     legs: 3, legLen: 1.5, legSplay: 0.42, legBend: 0.12, legTaper: 0.35,
     around: 0.45, limbR: 0.1,
     prongs: 1, prongLen: 0.55, spread: 0, prongTaper: 0.55, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 2, armLen: 0.45, armTilt: 0.03, nubs: 1,
     tex: 0.9, texScale: 42, gouge: 0.15,
   },
   rombe: {
     height: 3.9, nodes: 3, taper: 0.95, belly: 0.8, squash: 1.0, flat: 0.5,
-    neck: 0.06, twin: 0,
+    neck: 0.06, twin: 0, sway: 0.06,
     facet: 1, facetKind: 0, facetUp: 1, zig: 0,
     holes: 3, holeR: 0.17, funnel: 0.15, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 0.7, legSplay: 0.35, legBend: 0, legTaper: 0.5,
     around: 0, limbR: 0.09,
     prongs: 0, prongLen: 0.3, spread: 0, prongTaper: 0.5, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 0, armLen: 0.2, armTilt: 0, nubs: 0,
     tex: 0.5, texScale: 30, gouge: 0.4,
   },
   sikksakk: {
     height: 4.0, nodes: 2, taper: 1.0, belly: 0.72, squash: 0.95, flat: 0.55,
-    neck: 0.1, twin: 0,
+    neck: 0.1, twin: 0, sway: 0.2,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0.8,
     holes: 2, holeR: 0.2, funnel: 0.5, slot: 0, eyes: 0, panel: 0,
     legs: 2, legLen: 1.3, legSplay: 0.45, legBend: 0.1, legTaper: 0.2,
     around: 0, limbR: 0.08,
     prongs: 2, prongLen: 1.2, spread: 0.55, prongTaper: 0.16, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0.7,
     arms: 1, armLen: 0.25, armTilt: 0, nubs: 0,
     tex: 0.9, texScale: 40, gouge: 0.3,
   },
   søyle: {
     height: 4.4, nodes: 4, taper: 1.0, belly: 0.72, squash: 0.6, flat: 1.0,
-    neck: 0.04, twin: 0,
+    neck: 0.04, twin: 0, sway: 0.03,
     facet: 0, facetKind: 0, facetUp: 0, zig: 0.85,
     holes: 0, holeR: 0.15, funnel: 0.2, slot: 0, eyes: 0, panel: 0,
     legs: 0, legLen: 0.6, legSplay: 0.2, legBend: 0.05, legTaper: 0.5,
     around: 0.5, limbR: 0.08,
     prongs: 0, prongLen: 0.4, spread: 0, prongTaper: 0.7, spout: 0.9,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 1, armLen: 0.12, armTilt: 0.05, nubs: 0,
     tex: 0.35, texScale: 24, gouge: 0.05,
   },
   tvilling: {
     height: 3.6, nodes: 1, taper: 1, belly: 0.8, squash: 1.05, flat: 0.6,
-    neck: 0.2, twin: 0.85,
+    neck: 0.2, twin: 0.85, sway: 0.12,
     facet: 0, facetKind: 1, facetUp: 0, zig: 0,
     holes: 1, holeR: 0.28, funnel: 0.6, slot: 0, eyes: 0, panel: 0,
     legs: 4, legLen: 1.5, legSplay: 0.25, legBend: 0.12, legTaper: 0.22,
     around: 0.15, limbR: 0.085,
     prongs: 2, prongLen: 1.55, spread: 0.5, prongTaper: 0.16, spout: 0,
+    rings: 0, ringR: 0.6, rail: 0,
     arms: 1, armLen: 0.3, armTilt: 0, nubs: 0,
     tex: 0.85, texScale: 44, gouge: 0.15,
+  },
+  lenke: {
+    height: 4.2, nodes: 2, taper: 0.55, belly: 0.72, squash: 1.3, flat: 0.9,
+    neck: 0.1, twin: 0, sway: 0.1,
+    facet: 0, facetKind: 1, facetUp: 0, zig: 0,
+    holes: 1, holeR: 0.13, funnel: 0.2, slot: 0, eyes: 0, panel: 0,
+    legs: 0, legLen: 0.6, legSplay: 0.2, legBend: 0.1, legTaper: 0.5,
+    around: 0.3, limbR: 0.07,
+    prongs: 0, prongLen: 0.5, spread: 0.1, prongTaper: 0.7, spout: 0.35,
+    rings: 3, ringR: 0.78, rail: 0.35,
+    arms: 1, armLen: 0.16, armTilt: 0.08, nubs: 0,
+    tex: 0.55, texScale: 30, gouge: 0.25,
   },
 }
 
@@ -388,12 +436,13 @@ function rng(seed: number) {
 // of the full range for continuous params, absolute ± for integer ones
 const JITTER: Record<ParamKey, number> = {
   height: 0.1, nodes: 1, taper: 0.15, belly: 0.12, squash: 0.15, flat: 0.12,
-  neck: 0.15, twin: 0.06,
+  neck: 0.15, twin: 0.06, sway: 0.15,
   facet: 0.15, facetKind: 0.25, facetUp: 0.2, zig: 0.15,
   holes: 1, holeR: 0.15, funnel: 0.2, slot: 0.15, eyes: 0.15, panel: 0.1,
   legs: 1, legLen: 0.15, legSplay: 0.15, legBend: 0.2, legTaper: 0.15,
   around: 0.15, limbR: 0.12,
   prongs: 1, prongLen: 0.18, spread: 0.15, prongTaper: 0.15, spout: 0.2,
+  rings: 1, ringR: 0.12, rail: 0.2,
   arms: 1, armLen: 0.2, armTilt: 0.15, nubs: 1,
   tex: 0.12, texScale: 8, gouge: 0.2,
 }
@@ -421,6 +470,9 @@ export function genParams(seed: number): Params {
 
   const p = { seed: s } as Params
   for (const k of PARAM_KEYS) {
+    // gesture rides its own stream below so the rest of the space
+    // keeps its exact designs per seed
+    if (k === "sway") continue
     const r = PARAM_RANGES[k]
     let v = ANCHORS[a][k] + (ANCHORS[b][k] - ANCHORS[a][k]) * t
     v += (ANCHORS[c][k] - v) * w3
@@ -429,6 +481,17 @@ export function genParams(seed: number): Params {
     else v += (rnd() - 0.5) * 2 * j * (r.max - r.min)
     v = Math.min(r.max, Math.max(r.min, v))
     p[k] = r.step >= 1 ? Math.round(v) : +v.toFixed(3)
+  }
+
+  // posture: blended like everything else, then a slice of seeds leans
+  // hard — a figure caught mid-gesture rather than standing at attention
+  {
+    const g = rng(s * 1013904223 + 17)
+    let sw = ANCHORS[a].sway + (ANCHORS[b].sway - ANCHORS[a].sway) * t
+    sw += (ANCHORS[c].sway - sw) * w3
+    sw += (g() - 0.5) * 2 * JITTER.sway
+    if (g() < 0.14) sw = 0.45 + g() * 0.3
+    p.sway = +Math.min(1, Math.max(0, sw)).toFixed(3)
   }
 
   // the cut axis is free — no anchor owns a facet shape
@@ -490,7 +553,52 @@ export function genParams(seed: number): Params {
     p.gouge = Math.min(p.gouge, 0.4)
     p.texScale = Math.max(p.texScale, 32)
   }
+
+  // openwork: a slice of seeds scaffolds up in rings — and a lattice IS
+  // the crown, so prongs and spout stand down when rings rise
+  if (rnd() < 0.08) p.rings = Math.max(p.rings, 2)
+  if (p.rings > 0) {
+    p.prongs = 0
+    p.spout = 0
+    p.zig = 0
+  }
+  if (p.rail > 0 && p.rail < 0.3) p.rail = 0
   return p
+}
+
+/**
+ * Seeds are personal: any text — a name, a word — maps to a stable seed,
+ * so «Iver» is always the same totem. Case and padding don't matter.
+ */
+export function seedFromText(text: string): number {
+  const t = text.trim().toLowerCase()
+  let h = 2166136261
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return ((h >>> 0) % 8999000) + 1000
+}
+
+/**
+ * Every design speaks its own name — little landscape-and-creature words
+ * in the same dialect as the internal anchors, deterministic from the
+ * seed. A typed signature overrides it: then the piece is yours.
+ */
+export function genName(seed: number): string {
+  const r = rng(((seed | 0) || 1) * 69069 + 5)
+  const on = ["b","br","d","f","fj","g","gl","gr","h","k","kl","kn","kr","kv","l","m","n","r","s","sk","skr","sl","sm","sn","st","str","sv","t","tr","v"]
+  const vo = ["a","e","i","o","u","y","ø","å","ei","au","øy"]
+  const co = ["","k","l","ll","m","n","nn","ng","r","rk","rn","rt","s","st","t","tt","v"]
+  const suf = ["tind","varde","horn","knatt","stav","koll","nut","skar","troll","lykt"]
+  const syl = () =>
+    on[(r() * on.length) | 0] +
+    vo[(r() * vo.length) | 0] +
+    (r() < 0.55 ? co[(r() * co.length) | 0] : "")
+  let name = syl()
+  if (r() < 0.62) name += syl()
+  if (r() < 0.38 || name.length < 4) name += suf[(r() * suf.length) | 0]
+  return name[0].toUpperCase() + name.slice(1, 14)
 }
 
 /** The opening design: three pierced bodies, crossing antennae, hammered. */

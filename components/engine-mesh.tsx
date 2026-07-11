@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { useThree } from "@react-three/fiber"
 import type { Params } from "@/lib/engine"
-import { buildTotemArrays, gridMetaFor } from "@/lib/totem"
+import { buildTotemArrays, finishFor, gridMetaFor } from "@/lib/totem"
 import { arraysToGeometry } from "@/lib/geometry"
 import type { EngineJob, EngineResult } from "@/lib/engine-worker"
 
@@ -77,8 +77,8 @@ export function EngineMesh({
 
   const applyMesh = (r: EngineResult) => {
     if (r.kind !== "mesh" || r.gen !== genRef.current) return
-    const { positions, normals, indices } = r
-    swap(arraysToGeometry({ positions, normals, indices }))
+    const { positions, normals, indices, colors } = r
+    swap(arraysToGeometry({ positions, normals, indices, colors }))
   }
 
   const postPreview = (job: EngineJob) => {
@@ -157,7 +157,7 @@ export function EngineMesh({
               killRefine()
             }
             mw.onerror = () => killRefine()
-            const job: EngineJob = { kind: "mesh", gen, meta, slabs }
+            const job: EngineJob = { kind: "mesh", gen, params, meta, slabs }
             mw.postMessage(job, slabs.map((s) => s.field.buffer as ArrayBuffer))
           } catch {
             killRefine()
@@ -202,17 +202,23 @@ export function EngineMesh({
     return () => mesh?.geometry?.dispose()
   }, [])
 
+  // per-seed finish: the albedo (patina + ridge wax) is baked into vertex
+  // colors; gloss follows the patina — wax sheen on ebonised pieces, a
+  // drier matte on raw wood
+  const f1 = ((params.seed * 9301 + 49297) % 233280) / 233280
+  const f2 = ((params.seed * 49297 + 9301) % 233280) / 233280
+  const { wood } = finishFor(params.seed)
+
   return (
     <mesh ref={meshRef} castShadow receiveShadow>
-      {/* ebonised near-black: the body stays deep and dark, the hammered
-          relief carries the highlights — waxed-wood sheen, not gunmetal */}
       <meshPhysicalMaterial
-        color="#1a1412"
-        roughness={0.38}
-        metalness={0.28}
-        clearcoat={0.5}
-        clearcoatRoughness={0.32}
-        envMapIntensity={1.15}
+        vertexColors
+        color="#ffffff"
+        roughness={wood ? 0.52 + 0.08 * f1 : 0.34 + 0.1 * f1}
+        metalness={wood ? 0.12 : 0.26}
+        clearcoat={wood ? 0.12 : 0.4 + 0.25 * f2}
+        clearcoatRoughness={0.38}
+        envMapIntensity={wood ? 0.95 : 1.05 + 0.2 * f1}
       />
     </mesh>
   )

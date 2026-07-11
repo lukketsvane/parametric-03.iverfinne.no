@@ -6,10 +6,12 @@ export function arraysToGeometry({
   positions,
   normals,
   indices,
+  colors,
 }: TotemMeshArrays): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry()
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
   geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3))
+  if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 3))
   geo.setIndex(new THREE.BufferAttribute(indices, 1))
   return geo
 }

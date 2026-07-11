@@ -19,13 +19,20 @@ import type { Params } from "./engine"
  *   3. limbs   tapered capsules smooth-blended at their roots: bowed
  *              legs fanning from the base hub (in-plane X stances or
  *              full tripod/spider circles), antenna prongs from the
- *              crown (needle spikes to parallel candle fingers), short
- *              side arms at the equators, teat nubs underneath, one
- *              optional spout on top
+ *              crown (needle spikes to fat parallel fingers rooted in
+ *              the silhouette), short side arms at the equators, teat
+ *              nubs underneath, one optional spout on top; openwork
+ *              rings can scaffold up from the crown with stub-ended
+ *              cross bars, and a pegged rail can stand beside the body
  *   4. carve   the whole body is displaced near the surface — cellular
  *              scallop dimples (every Worley cell one hammer blow, the
  *              crisp ridges landing exactly on the cell walls)
  *              crossfading into long directional gouges
+ *   5. gesture sway warps the query space so the piece leans — base
+ *              planted, crown drifting; hubs drift off-axis and their
+ *              crystal cuts twist; arm pairs un-mirror
+ *   6. finish  bakeColors() gives every seed its own patina and rubs a
+ *              dry-brush wax lift into the carve ridges
  *
  * Every organic accident (hub swelling, hole drift, limb jitter) is
  * seeded, so a design is exactly reproducible from its parameters.
@@ -39,6 +46,8 @@ export type TotemMeshArrays = {
   positions: Float32Array
   normals: Float32Array
   indices: Uint32Array
+  /** per-vertex albedo — seeded patina with dry-brush wax on the ridges */
+  colors?: Float32Array
 }
 
 export type GridMeta = {
@@ -204,10 +213,13 @@ const PLANE_SETS: { n: Float32Array; k: number }[] = [
 
 type Hub = {
   cy: number
+  cx: number // off-axis drift — hand-stacked, not lathe-turned
   rx: number
   ry: number
   rz: number
   w: number // facet crossfade weight
+  rotC: number // facet twist around y, per hub
+  rotS: number
 }
 
 type Seg = {
@@ -229,13 +241,51 @@ type Hole = {
   rz: number // depth radius of the host hub, for the funnel
 }
 
+// openwork ring: a tube circling in the xy plane (torus with z axis)
+type Ring = { cx: number; cy: number; R: number; r: number }
+
 type Panel = { cx: number; cy: number; a: number; zP: number } | null
+
+// finish palettes — each seed owns one patina. Most pieces are ebonised
+// near-black; a warm slice is left as raw carved wood (the references mix
+// golden oak and oiled walnut in with the black). Vertex colors reach the
+// shader unconverted, so these are LINEAR albedo values.
+const PATINAS: [number, number, number][] = [
+  [0.0111, 0.0069, 0.0047], // waxed umber (#1b140f)
+  [0.008, 0.006, 0.0086], // aubergine black (#161217)
+  [0.0092, 0.0092, 0.0092], // neutral soot (#181818)
+  [0.0068, 0.0086, 0.005], // mossy bronze (#141710)
+  [0.006, 0.0069, 0.0107], // blue slate (#12141a)
+]
+const WOODS: [number, number, number][] = [
+  [0.318, 0.154, 0.047], // golden oak (#996d3d)
+  [0.145, 0.059, 0.019], // oiled walnut (#6b4526)
+  [0.059, 0.029, 0.0122], // smoked brown (#452f1d)
+]
+
+/** Which finish a seed carries — shared by the geometry bake and the
+    material so gloss can follow the patina (wax on black, matte on oak). */
+export function finishFor(seed: number): {
+  patina: [number, number, number]
+  wood: boolean
+  waxK: number
+} {
+  const s = (seed | 0) || 1
+  const wood = ih(5, 31, 41, s) < 0.34
+  const pal = wood ? WOODS : PATINAS
+  return {
+    patina: pal[Math.floor(ih(9, 17, 23, s) * pal.length) % pal.length],
+    wood,
+    waxK: 0.55 + 0.45 * ih(11, 13, 29, s),
+  }
+}
 
 type Plan = {
   S: number // world scale: field is built at unit scale, queried at /S
   hubs: Hub[]
   minis: Hub[] // zigzag chevron beads (always diamond-cut)
   segs: Seg[]
+  rings: Ring[] // openwork scaffold above the crown
   holes: Hole[]
   panel: Panel
   // the cut crossfades between two adjacent plane sets
@@ -251,6 +301,16 @@ type Plan = {
   tex: number
   texScale: number
   gouge: number
+  // gesture: the spine bends toward (bendX, bendZ), planted at by0,
+  // drifting hardest at by1 — bendA is the crown's full offset
+  bendA: number
+  bendX: number
+  bendZ: number
+  by0: number
+  by1: number
+  // finish: seeded patina albedo and how hard the wax is rubbed in
+  patina: [number, number, number]
+  waxK: number
   // world-space bounds (already scaled by S)
   bounds: { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }
 }
@@ -259,7 +319,8 @@ function computePlan(p: Params): Plan {
   const seed = (p.seed | 0) || 1
   const n = Math.max(1, Math.round(p.nodes))
 
-  /* hubs — stacked bottom (0) to top (n-1) */
+  /* hubs — stacked bottom (0) to top (n-1). Each drifts a little off
+     axis and twists its crystal cut: sway scales both accidents. */
   const hubs: Hub[] = []
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0.5 : i / (n - 1)
@@ -267,7 +328,17 @@ function computePlan(p: Params): Plan {
       p.belly * (1 + (p.taper - 1) * t) * (1 + 0.05 * jit(i, 1, seed))
     const w =
       p.facet * clamp01(n === 1 ? 1 : 1 + p.facetUp * (n - 1) - i)
-    hubs.push({ cy: 0, rx: r, ry: r * p.squash, rz: r * p.flat, w })
+    const rot = (0.12 + 0.5 * p.sway) * jit(i, 21, seed)
+    hubs.push({
+      cy: 0,
+      cx: r * (0.02 + 0.1 * p.sway) * jit(i, 20, seed),
+      rx: r,
+      ry: r * p.squash,
+      rz: r * p.flat,
+      w,
+      rotC: Math.cos(rot),
+      rotS: Math.sin(rot),
+    })
   }
   let cy = 0
   for (let i = 1; i < n; i++) {
@@ -294,7 +365,10 @@ function computePlan(p: Params): Plan {
       const hh = Math.max(((y1 - y0) / m) * 0.85, rr * 0.33)
       for (let k = 0; k < m; k++) {
         const my = y0 + ((k + 0.5) / m) * (y1 - y0)
-        minis.push({ cy: my, rx: rr, ry: hh, rz: rr * p.flat, w: 1 })
+        minis.push({
+          cy: my, cx: (a.cx + b.cx) / 2, rx: rr, ry: hh, rz: rr * p.flat,
+          w: 1, rotC: 1, rotS: 0,
+        })
       }
     }
   }
@@ -304,6 +378,20 @@ function computePlan(p: Params): Plan {
   // primary hub: the largest body carries the extra holes, slot and panel
   let prim = 0
   for (let i = 1; i < n; i++) if (hubs[i].rx > hubs[prim].rx) prim = i
+
+  /* gesture — the whole piece sways: base planted, crown drifting
+     sideways in a seeded direction. Applied as a query-space warp so
+     every feature leans together and nothing detaches. */
+  let gbx = jit(1, 30, seed)
+  let gbz = 0.45 * jit(2, 30, seed)
+  const gbl = Math.hypot(gbx, gbz) || 1
+  gbx /= gbl
+  gbz /= gbl
+  const stackH = top.cy + top.ry - (bottom.cy - bottom.ry)
+  const bendA =
+    p.sway * 0.17 * stackH * (0.6 + 0.4 * Math.abs(jit(3, 30, seed)))
+  const by0 = bottom.cy
+  const by1 = top.cy + top.ry + 1e-6
 
   /* limbs */
   const segs: Seg[] = []
@@ -325,7 +413,7 @@ function computePlan(p: Params): Plan {
     dz /= dl
     const L = legLen
     const reach = p.legSplay * L * (1 + 0.1 * jit(j, 3, seed))
-    const ax = dx * bottom.rx * 0.6
+    const ax = bottom.cx + dx * bottom.rx * 0.6
     const ay = bottom.cy - bottom.ry * 0.55
     const az2 = dz * bottom.rz * 0.6
     const fx = ax + dx * reach
@@ -358,22 +446,30 @@ function computePlan(p: Params): Plan {
     }
   }
 
-  // prongs — antennae rising from the crown; spread 0 keeps them parallel
+  // prongs — antennae rising from the crown; spread 0 keeps them parallel.
+  // Parallel prongs are FINGERS, not needles: they fatten toward a share
+  // of the crown's width and root inside the body, so they read as the
+  // silhouette continuing upward with narrow slots between — the way the
+  // reference candelabra grow straight out of the plaque.
   const prongs = Math.round(p.prongs)
+  const candle = clamp01(1 - p.spread * 2.2)
   for (let k = 0; k < prongs; k++) {
     const u = prongs === 1 ? 0 : (k / (prongs - 1)) * 2 - 1
-    const tilt = u * p.spread * 0.72
+    const tilt = u * p.spread * 0.72 + 0.1 * p.sway * jit(k, 24, seed)
     const L = p.prongLen * (1 + 0.07 * jit(k, 4, seed))
-    const ax = u * top.rx * 0.68
-    const ay = top.cy + top.ry * 0.4
+    const fatten =
+      candle * top.rx * (prongs > 1 ? Math.min(0.26, 1 / (prongs + 0.6)) : 0.24)
+    const ra = limbR * 0.95 + fatten
+    const ax = top.cx + u * top.rx * (0.68 + 0.1 * candle)
+    const ay = top.cy + top.ry * (0.4 - 0.35 * candle)
     const az = 0.04 * jit(k, 5, seed)
     segs.push({
       ax, ay, az,
       bx: ax + Math.sin(tilt) * L,
       by: ay + Math.cos(tilt) * L,
       bz: az,
-      ra: limbR * 0.95,
-      rb: limbR * p.prongTaper,
+      ra,
+      rb: ra * Math.max(p.prongTaper, 0.8 * candle),
     })
   }
 
@@ -381,28 +477,92 @@ function computePlan(p: Params): Plan {
   if (p.spout > 0.02) {
     const L = p.spout * (0.12 + top.rx * 0.45)
     segs.push({
-      ax: 0, ay: top.cy + top.ry * 0.7, az: 0,
-      bx: 0, by: top.cy + top.ry * 0.7 + L, bz: 0,
+      ax: top.cx, ay: top.cy + top.ry * 0.7, az: 0,
+      bx: top.cx, by: top.cy + top.ry * 0.7 + L, bz: 0,
       ra: limbR * 1.1, rb: limbR * 0.75,
     })
   }
 
   // arms — ±x stub pairs on the largest bodies first; girth follows the
-  // host body so stubs read carved-on rather than pinned-in
+  // host body so stubs read carved-on rather than pinned-in. With sway
+  // the pair un-mirrors: each side takes its own reach and lift, one arm
+  // raised, one dropped — figures gesture, machines mirror.
   const arms = Math.min(Math.round(p.arms), n)
   const bySize = hubs
     .map((h, i) => i)
     .sort((a, b) => hubs[b].rx - hubs[a].rx)
   for (let a = 0; a < arms; a++) {
     const h = hubs[bySize[a]]
-    const L = p.armLen + h.rx * 0.2
     const ay = h.cy + 0.1 * h.ry * jit(a, 6, seed)
     const ra = limbR * 1.05 + h.rx * 0.05
     for (const sx of [-1, 1]) {
+      const k = a * 2 + (sx + 1) / 2
+      const L =
+        (p.armLen + h.rx * 0.2) * (1 + 0.22 * p.sway * jit(k, 22, seed))
+      const tilt = p.armTilt + 0.4 * p.sway * jit(k, 23, seed)
       segs.push({
-        ax: sx * h.rx * 0.75, ay, az: 0,
-        bx: sx * (h.rx * 0.75 + L), by: ay + p.armTilt * L, bz: 0,
+        ax: h.cx + sx * h.rx * 0.75, ay, az: 0,
+        bx: h.cx + sx * (h.rx * 0.75 + L), by: ay + tilt * L, bz: 0,
         ra, rb: ra * 0.72,
+      })
+    }
+  }
+
+  /* openwork — a chain of rings scaffolding up from the crown, joined by
+     stub-ended cross bars: the lattice pieces. Rings ride the same sway
+     warp as everything else, so the whole scaffold leans with the body. */
+  const rings: Ring[] = []
+  const ringN = Math.round(p.rings)
+  if (ringN > 0) {
+    const tube = Math.max(limbR * 1.15, 0.055)
+    let R = p.ringR * top.rx
+    let cyR = top.cy + top.ry * 0.55 + R // first ring bites into the crown
+    for (let k = 0; k < ringN; k++) {
+      const cx = top.cx + R * 0.16 * jit(k, 40, seed)
+      rings.push({ cx, cy: cyR, R, r: tube })
+      // cross bar at the ring's waist with short stub ends — the ⊢ bars
+      const barL = R * (1.35 + 0.15 * jit(k, 41, seed))
+      const by = cyR + R * 0.2 * jit(k, 42, seed)
+      segs.push({
+        ax: cx - barL, ay: by, az: 0,
+        bx: cx + barL, by, bz: 0,
+        ra: tube * 0.92, rb: tube * 0.92,
+      })
+      for (const sx of [-1, 1]) {
+        const stubUp = (k + (sx > 0 ? 0 : 1)) % 2 === 0 ? 1 : -1
+        segs.push({
+          ax: cx + sx * barL, ay: by, az: 0,
+          bx: cx + sx * barL, by: by + stubUp * R * 0.32, bz: 0,
+          ra: tube * 0.85, rb: tube * 0.7,
+        })
+      }
+      const R2 = R * (0.9 + 0.08 * jit(k, 43, seed))
+      cyR += R * 0.72 + R2 * 0.72 // chained: each ring overlaps the last
+      R = R2
+    }
+  }
+
+  /* rail — a vertical bar standing beside the primary body, pegged to it:
+     the zigzag plaque's sidekick. Pegs point inward to fuse with the hub
+     and continue outward as short stubs. */
+  if (p.rail > 0.05) {
+    const h = hubs[prim]
+    const sxR = jit(4, 44, seed) > 0 ? 1 : -1
+    const span = h.ry * (0.55 + 0.45 * p.rail)
+    const rx0 = h.cx + sxR * (h.rx * 1.02 + h.rx * 0.28 * p.rail)
+    const rr = limbR * 1.05
+    segs.push({
+      ax: rx0, ay: h.cy - span, az: 0,
+      bx: rx0, by: h.cy + span, bz: 0,
+      ra: rr, rb: rr,
+    })
+    const pegs = 3
+    for (let k = 0; k < pegs; k++) {
+      const py = h.cy + span * ((k / (pegs - 1)) * 2 - 1) * 0.82
+      segs.push({
+        ax: h.cx + sxR * h.rx * 0.4, ay: py, az: 0,
+        bx: rx0 + sxR * h.rx * 0.22, by: py, bz: 0,
+        ra: rr * 0.85, rb: rr * 0.7,
       })
     }
   }
@@ -411,7 +571,7 @@ function computePlan(p: Params): Plan {
   // its underside (a dangling teat must not become the foot)
   const nubs = Math.round(p.nubs)
   for (let k = 0; k < nubs; k++) {
-    const dx = (k - (nubs - 1) / 2) * limbR * 3
+    const dx = bottom.cx + (k - (nubs - 1) / 2) * limbR * 3
     const L = Math.min(0.12 + limbR * 2, bottom.ry * 0.26)
     segs.push({
       ax: dx, ay: bottom.cy - bottom.ry * 0.72, az: 0,
@@ -465,7 +625,7 @@ function computePlan(p: Params): Plan {
         const hr =
           p.holeR * h.rx * shrink * (1 + 0.15 * jit(i * 7 + k, 8, seed))
         holes.push({
-          hx: p.eyes * off,
+          hx: h.cx + p.eyes * off,
           hy: h.cy + (1 - p.eyes) * off + 0.08 * h.ry * jit(i * 7 + k, 9, seed),
           hr,
           stretch: isPrim ? p.slot * h.ry * 0.42 : 0,
@@ -480,7 +640,7 @@ function computePlan(p: Params): Plan {
   if (p.panel > 0.02 && hCount > 0) {
     const h = hubs[prim]
     panel = {
-      cx: 0,
+      cx: h.cx,
       cy: h.cy,
       a: h.rx * (0.5 + 0.18 * p.panel),
       zP: h.rz * (1 - 0.42 * p.panel),
@@ -504,7 +664,7 @@ function computePlan(p: Params): Plan {
   let y1 = -Infinity
   let z1 = 0
   for (const h of [...hubs, ...minis]) {
-    x1 = Math.max(x1, h.rx)
+    x1 = Math.max(x1, Math.abs(h.cx) + h.rx)
     y0 = Math.min(y0, h.cy - h.ry)
     y1 = Math.max(y1, h.cy + h.ry)
     z1 = Math.max(z1, h.rz)
@@ -516,7 +676,16 @@ function computePlan(p: Params): Plan {
     y1 = Math.max(y1, s.ay + r, s.by + r)
     z1 = Math.max(z1, Math.abs(s.az) + r, Math.abs(s.bz) + r)
   }
+  for (const rg of rings) {
+    x1 = Math.max(x1, Math.abs(rg.cx) + rg.R + rg.r)
+    y0 = Math.min(y0, rg.cy - rg.R - rg.r)
+    y1 = Math.max(y1, rg.cy + rg.R + rg.r)
+    z1 = Math.max(z1, rg.r)
+  }
   x1 += twinOff
+  // the sway warp moves rendered geometry by up to bendA
+  x1 += Math.abs(bendA * gbx)
+  z1 += Math.abs(bendA * gbz)
   // the height slider is the piece's true overall height: whatever the
   // limbs and stack add up to is scaled to exactly p.height world units
   const S = p.height / Math.max(0.001, y1 - y0)
@@ -531,6 +700,7 @@ function computePlan(p: Params): Plan {
     hubs,
     minis,
     segs,
+    rings,
     holes,
     panel,
     planesA: setA.n,
@@ -545,6 +715,13 @@ function computePlan(p: Params): Plan {
     tex: p.tex,
     texScale: p.texScale,
     gouge: p.gouge,
+    bendA,
+    bendX: gbx,
+    bendZ: gbz,
+    by0,
+    by1,
+    patina: finishFor(seed).patina,
+    waxK: finishFor(seed).waxK,
     bounds: {
       x0: -x1 * S,
       x1: x1 * S,
@@ -565,7 +742,14 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
   const { S, hubs, minis, segs, holes, panel, planesA, planeKA, planesB, planeKB, facetMix, neckK } = plan
   let x = wx / S
   const y = wy / S
-  const z = wz / S
+  let z = wz / S
+  // gesture: sway the query space — base planted, crown drifting
+  if (plan.bendA !== 0) {
+    const t = clamp01((y - plan.by0) / (plan.by1 - plan.by0))
+    const b = plan.bendA * t * t
+    x -= b * plan.bendX
+    z -= b * plan.bendZ
+  }
   // twin fold: |x| − offset places a full mirrored copy of the piece in
   // each lobe, hard-unioned at the x = 0 waist
   if (plan.twinOff > 0) x = Math.abs(x) - plan.twinOff
@@ -574,22 +758,25 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
   let d = Infinity
   for (let i = 0; i < hubs.length; i++) {
     const h = hubs[i]
-    const qx = x / h.rx
+    const qx = (x - h.cx) / h.rx
     const qy = (y - h.cy) / h.ry
     const qz = z / h.rz
     const m = Math.min(h.rx, h.ry, h.rz)
     let dh = (Math.hypot(qx, qy, qz) - 1) * m
     if (h.w > 0) {
+      // the crystal cut is twisted per hub — hand-set, not jig-aligned
+      const tx = qx * h.rotC + qz * h.rotS
+      const tz = qz * h.rotC - qx * h.rotS
       let dfA = -Infinity
       for (let k = 0; k < planesA.length; k += 3) {
-        const t = qx * planesA[k] + qy * planesA[k + 1] + qz * planesA[k + 2]
+        const t = tx * planesA[k] + qy * planesA[k + 1] + tz * planesA[k + 2]
         if (t > dfA) dfA = t
       }
       let f = dfA - planeKA
       if (facetMix > 0) {
         let dfB = -Infinity
         for (let k = 0; k < planesB.length; k += 3) {
-          const t = qx * planesB[k] + qy * planesB[k + 1] + qz * planesB[k + 2]
+          const t = tx * planesB[k] + qy * planesB[k + 1] + tz * planesB[k + 2]
           if (t > dfB) dfB = t
         }
         f += (dfB - planeKB - f) * facetMix
@@ -602,7 +789,7 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
   /* zigzag beads — always diamond-cut */
   const octa = PLANE_SETS[0].n
   for (const h of minis) {
-    const qx = x / h.rx
+    const qx = (x - h.cx) / h.rx
     const qy = (y - h.cy) / h.ry
     const qz = z / h.rz
     const m = Math.min(h.rx, h.ry, h.rz)
@@ -632,6 +819,14 @@ function fieldAt(plan: Plan, wx: number, wy: number, wz: number): number {
       (s.ra + (s.rb - s.ra) * hh)
     if (ds < dLimb) dLimb = ds
     d = smin(d, ds, 0.04)
+  }
+
+  /* openwork rings — clean tubes, so they count as limbs for the carve */
+  for (const rg of plan.rings) {
+    const dxy = Math.hypot(x - rg.cx, y - rg.cy) - rg.R
+    const dr = Math.hypot(dxy, z) - rg.r
+    if (dr < dLimb) dLimb = dr
+    d = smin(d, dr, 0.05)
   }
 
   /* panel recess — carve the faces down around the hole cluster */
@@ -742,10 +937,105 @@ export function meshField(meta: GridMeta, field: Float32Array): TotemMeshArrays 
   return { positions, normals: buildNormals(positions, indices), indices }
 }
 
-/** Single-threaded build: sample everything, then mesh. */
-export function buildTotemArrays(p: Params, res: number): TotemMeshArrays {
+/**
+ * Bake the finish: per-vertex albedo. Each seed owns a patina, and the
+ * carve ridges take a dry-brushed wax lift — the polish a piece picks up
+ * from handling — warming toward gold where the relief stands proud.
+ * Limbs stay clean, exactly like the carve itself. Skipped for STL.
+ */
+export function bakeColors(p: Params, positions: Float32Array): Float32Array {
+  const plan = computePlan(p)
+  const colors = new Float32Array(positions.length)
+  const [pr, pg, pb] = plan.patina
+  const wk = plan.waxK
+  const s = plan.texScale
+  const g = plan.gouge
+  for (let i = 0; i < positions.length; i += 3) {
+    // same query-space transform as fieldAt
+    let x = positions[i] / plan.S
+    const y = positions[i + 1] / plan.S
+    let z = positions[i + 2] / plan.S
+    if (plan.bendA !== 0) {
+      const t = clamp01((y - plan.by0) / (plan.by1 - plan.by0))
+      const b = plan.bendA * t * t
+      x -= b * plan.bendX
+      z -= b * plan.bendZ
+    }
+    if (plan.twinOff > 0) x = Math.abs(x) - plan.twinOff
+
+    let wax = 0
+    if (plan.tex > 0.02) {
+      // body vs limb, ellipsoid approximation of the hubs
+      let dB = Infinity
+      for (const h of plan.hubs) {
+        const qx = (x - h.cx) / h.rx
+        const qy = (y - h.cy) / h.ry
+        const qz = z / h.rz
+        const dh = (Math.hypot(qx, qy, qz) - 1) * Math.min(h.rx, h.ry, h.rz)
+        if (dh < dB) dB = dh
+      }
+      let dL = Infinity
+      for (const sg of plan.segs) {
+        const pax = x - sg.ax
+        const pay = y - sg.ay
+        const paz = z - sg.az
+        const bax = sg.bx - sg.ax
+        const bay = sg.by - sg.ay
+        const baz = sg.bz - sg.az
+        const hh = clamp01(
+          (pax * bax + pay * bay + paz * baz) /
+            (bax * bax + bay * bay + baz * baz),
+        )
+        const ds =
+          Math.hypot(pax - bax * hh, pay - bay * hh, paz - baz * hh) -
+          (sg.ra + (sg.rb - sg.ra) * hh)
+        if (ds < dL) dL = ds
+      }
+      for (const rg of plan.rings) {
+        const dxy = Math.hypot(x - rg.cx, y - rg.cy) - rg.R
+        const dr = Math.hypot(dxy, z) - rg.r
+        if (dr < dL) dL = dr
+      }
+      const wLimb = clamp01(0.5 + (dB - dL) * 9)
+      const amp = plan.tex * (1 - 0.78 * wLimb)
+      if (amp > 0.02) {
+        let relief = 0
+        if (g < 1) {
+          const f1 = worleyF1(x * s, y * s, z * s, plan.seed)
+          let cup = 1 - f1 * 1.45
+          if (cup < 0) cup = 0
+          cup *= cup * (3 - 2 * cup)
+          relief += (1 - g) * clamp01((0.38 - cup) / 0.38)
+        }
+        if (g > 0) {
+          const gou = vnoise3(x * s * 0.9, y * s * 0.28, z * s * 0.9, plan.seed + 7)
+          let ridge = 1 - Math.abs(gou - 0.5) * 2
+          ridge *= ridge * (3 - 2 * ridge)
+          relief += g * clamp01((0.45 - ridge) / 0.45)
+        }
+        wax = amp * wk * relief
+      }
+    }
+    // dry-brush: a quiet lift on the crests with a warm cast — polish,
+    // not paint. Kept faint so it never reads as albedo noise.
+    const lift = 1 + 0.5 * wax
+    colors[i] = Math.min(1, pr * lift + 0.0062 * wax)
+    colors[i + 1] = Math.min(1, pg * lift + 0.0045 * wax)
+    colors[i + 2] = Math.min(1, pb * lift + 0.0024 * wax)
+  }
+  return colors
+}
+
+/** Single-threaded build: sample everything, then mesh (and finish). */
+export function buildTotemArrays(
+  p: Params,
+  res: number,
+  bake = true,
+): TotemMeshArrays {
   const sampler = makeSampler(p, res)
-  return meshField(sampler.meta, sampler.fill(0, sampler.meta.nz))
+  const arrays = meshField(sampler.meta, sampler.fill(0, sampler.meta.nz))
+  if (bake) arrays.colors = bakeColors(p, arrays.positions)
+  return arrays
 }
 
 /** Area-weighted smooth vertex normals — dense MC meshes shade well with these. */

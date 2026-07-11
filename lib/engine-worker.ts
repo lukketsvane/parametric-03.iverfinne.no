@@ -1,4 +1,5 @@
 import {
+  bakeColors,
   buildTotemArrays,
   makeSampler,
   meshField,
@@ -17,9 +18,15 @@ import type { Params } from "./engine"
  *  - mesh:  assemble transferred slabs and extract the surface
  */
 export type EngineJob =
-  | { kind: "build"; gen: number; params: Params; res: number }
+  | { kind: "build"; gen: number; params: Params; res: number; bake?: boolean }
   | { kind: "slab"; gen: number; params: Params; res: number; z0: number; z1: number }
-  | { kind: "mesh"; gen: number; meta: GridMeta; slabs: { z0: number; field: Float32Array }[] }
+  | {
+      kind: "mesh"
+      gen: number
+      params: Params
+      meta: GridMeta
+      slabs: { z0: number; field: Float32Array }[]
+    }
 
 export type SlabResult = { kind: "slab"; gen: number; z0: number; field: Float32Array }
 export type MeshResult = {
@@ -28,6 +35,7 @@ export type MeshResult = {
   positions: Float32Array
   normals: Float32Array
   indices: Uint32Array
+  colors?: Float32Array
 }
 export type EngineResult = SlabResult | MeshResult
 
@@ -37,12 +45,14 @@ const post = (msg: EngineResult, buffers: ArrayBufferLike[]) =>
 self.onmessage = (e: MessageEvent<EngineJob>) => {
   const job = e.data
   if (job.kind === "build") {
-    const { positions, normals, indices } = buildTotemArrays(job.params, job.res)
-    post({ kind: "mesh", gen: job.gen, positions, normals, indices }, [
-      positions.buffer,
-      normals.buffer,
-      indices.buffer,
-    ])
+    const { positions, normals, indices, colors } = buildTotemArrays(
+      job.params,
+      job.res,
+      job.bake !== false,
+    )
+    const buffers = [positions.buffer, normals.buffer, indices.buffer]
+    if (colors) buffers.push(colors.buffer)
+    post({ kind: "mesh", gen: job.gen, positions, normals, indices, colors }, buffers)
   } else if (job.kind === "slab") {
     const sampler = makeSampler(job.params, job.res)
     const field = sampler.fill(job.z0, job.z1)
@@ -52,10 +62,12 @@ self.onmessage = (e: MessageEvent<EngineJob>) => {
     const field = new Float32Array(meta.nx * meta.ny * meta.nz)
     for (const s of slabs) field.set(s.field, meta.nx * meta.ny * s.z0)
     const { positions, normals, indices } = meshField(meta, field)
-    post({ kind: "mesh", gen: job.gen, positions, normals, indices }, [
+    const colors = bakeColors(job.params, positions)
+    post({ kind: "mesh", gen: job.gen, positions, normals, indices, colors }, [
       positions.buffer,
       normals.buffer,
       indices.buffer,
+      colors.buffer,
     ])
   }
 }
